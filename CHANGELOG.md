@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- Use the platform-neutral project name **WeChat Digest** and repository `rmqg/wechat-digest`; update clone instructions and repository links.
+
 ## 1.0.0
 
 Initial public MIT release of the authorized personal-WeChat digest pipeline.

@@ -1,4 +1,4 @@
-# iStoreOS WeChat Digest
+# WeChat Digest
 
 面向 **自己设备、自己账号或明确获授权数据** 的微信本地数据与总结工具链：密钥提取、认证解密、消息/媒体解析、双版总结、安全投递和带原文来源的网页。
 
@@ -34,8 +34,8 @@
 要求 Python 3.11+；使用虚拟环境，不修改系统 Python：
 
 ```sh
-git clone https://github.com/rmqg/istoreos-wechat-digest.git
-cd istoreos-wechat-digest
+git clone https://github.com/rmqg/wechat-digest.git
+cd wechat-digest
 python3 -m venv .venv
 . .venv/bin/activate
 python -m pip install -r requirements.txt

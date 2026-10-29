@@ -2,12 +2,12 @@
 
 本文面向独立的新公开发布实例。只在你有权访问的账号/数据库上操作。Linux 宿主应有与镜像相容的 CPU 架构、Docker Engine/CLI 和 Compose v2 插件、Python 3 及 venv、git、OpenSSH/rsync（需发布时）、足够的持久磁盘和 Docker daemon 管理权限。iStoreOS/OpenWrt 还需 procd/`rc.common`；非 OpenWrt Linux 可自行管理 `daily-job.py`，但不要假设这些 initd 脚本可直接用于 systemd。Docker socket 权限近似 root：不要对公网暴露 daemon，不要把 docker 组权限授予不可信账户。
 
-克隆经审阅的发行版本至 `/opt/wechat-digest`。示例仓库地址与 `RELEASE_TAG` 是占位值，须替换为真实已核验发行源和版本；不复制旧项目 runtime 或聊天数据：
+从公开仓库克隆源码至 `/opt/wechat-digest`。下面使用 `main` 分支；生产部署前应审阅并固定到已核验的提交，不复制旧项目 runtime 或聊天数据：
 
 ```sh
 sudo install -d -m 0750 -o root -g root /opt/wechat-digest
 sudo chown "$(id -u):$(id -g)" /opt/wechat-digest
-git clone --branch RELEASE_TAG https://example.com/OWNER/istoreos-wechat-digest-public.git /opt/wechat-digest
+git clone --branch main https://github.com/rmqg/wechat-digest.git /opt/wechat-digest
 cd /opt/wechat-digest
 python3 -m venv .venv
 .venv/bin/pip install -r requirements-dev.txt
