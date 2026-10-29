@@ -1,0 +1,17 @@
+<?xml version='1.0' encoding='utf-8'?>
+<msg>
+  <appmsg>
+    <title>社区花园分区安排（虚构转发）</title>
+    <des>合成的转发消息，用于展示安全解析。</des>
+    <recorditem>
+      <recordinfo>
+        <dataitem datatype="1">
+          <datadesc>A区：香草</datadesc>
+        </dataitem>
+        <dataitem datatype="1">
+          <datadesc>B区：花苗</datadesc>
+        </dataitem>
+      </recordinfo>
+    </recorditem>
+  </appmsg>
+</msg>

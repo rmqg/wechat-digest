@@ -1,0 +1,1008 @@
+{
+  "chat_username": "synthetic-demo-chat",
+  "chat_display": "合成示例群（虚构）",
+  "day": "2026-10-28",
+  "generated_at": "2026-10-29T00:00:00+00:00",
+  "range_text": "2026-10-28 00:00–2026-10-29 00:00（UTC）",
+  "window": {
+    "start_unix": 1793145600,
+    "end_unix_exclusive": 1793232000
+  },
+  "timezone": "UTC",
+  "stats": {
+    "messages": 5,
+    "members": 3,
+    "groups": 1,
+    "images": 1
+  },
+  "one_line": "合成示例：成员协商周六的社区花园活动安排，并分配了准备工作。",
+  "topics": [
+    {
+      "topic": "社区花园活动安排",
+      "summary": "活动定在周六上午，成员讨论集合地点与物资分工。",
+      "details": [
+        "林小满提出在入口旁集合。",
+        "周禾准备工具箱，陈星负责标签。",
+        "转发内容展示了虚构的分区安排。"
+      ],
+      "message_ids": [
+        "SYN-M001",
+        "SYN-M002",
+        "SYN-M003",
+        "SYN-M004",
+        "SYN-M005"
+      ],
+      "reference_ids": [
+        "M001",
+        "M002",
+        "M003",
+        "M004",
+        "M005"
+      ],
+      "references": [
+        {
+          "message_uid": "SYN-M001",
+          "reference": "M001",
+          "author": "林小满",
+          "author_id": "synthetic-alex",
+          "timestamp": 1793149200,
+          "type": "text",
+          "text": "周末的社区花园活动改到周六上午，入口旁边集合。"
+        },
+        {
+          "message_uid": "SYN-M002",
+          "reference": "M002",
+          "author": "周禾",
+          "author_id": "synthetic-bo",
+          "timestamp": 1793149500,
+          "type": "text",
+          "text": "收到，我会带上工具箱。"
+        },
+        {
+          "message_uid": "SYN-M003",
+          "reference": "M003",
+          "author": "陈星",
+          "author_id": "synthetic-cen",
+          "timestamp": 1793149800,
+          "type": "reply",
+          "text": "我可以负责准备标签。\n引用 林小满：周末的社区花园活动改到周六上午，入口旁边集合。"
+        },
+        {
+          "message_uid": "SYN-M004",
+          "reference": "M004",
+          "author": "林小满",
+          "author_id": "synthetic-alex",
+          "timestamp": 1793152800,
+          "type": "forward",
+          "text": "转发：社区花园分区安排\nA区：香草\nB区：花苗"
+        },
+        {
+          "message_uid": "SYN-M005",
+          "reference": "M005",
+          "author": "周禾",
+          "author_id": "synthetic-bo",
+          "timestamp": 1793156400,
+          "type": "image",
+          "text": "示意图已附（合成图，不是聊天原图）。",
+          "image_src": "garden-plan.png"
+        }
+      ],
+      "start_unix": 1793149200,
+      "end_unix": 1793156400,
+      "participant_ids": [
+        "synthetic-alex",
+        "synthetic-bo",
+        "synthetic-cen"
+      ]
+    }
+  ],
+  "participants": [
+    {
+      "account_id": "synthetic-alex",
+      "name": "林小满",
+      "count": 2
+    },
+    {
+      "account_id": "synthetic-bo",
+      "name": "周禾",
+      "count": 2
+    },
+    {
+      "account_id": "synthetic-cen",
+      "name": "陈星",
+      "count": 1
+    }
+  ],
+  "active_rank": [
+    {
+      "account_id": "synthetic-alex",
+      "name": "林小满",
+      "count": 2
+    },
+    {
+      "account_id": "synthetic-bo",
+      "name": "周禾",
+      "count": 2
+    },
+    {
+      "account_id": "synthetic-cen",
+      "name": "陈星",
+      "count": 1
+    }
+  ],
+  "leaders": {
+    "peak": {
+      "name": "2026-10-28 01:00",
+      "count": 2
+    }
+  },
+  "rhythm_buckets": [
+    {
+      "start_unix": 1793145600,
+      "end_unix_exclusive": 1793146200,
+      "count": 0,
+      "label": "2026-10-28 00:00"
+    },
+    {
+      "start_unix": 1793146200,
+      "end_unix_exclusive": 1793146800,
+      "count": 0,
+      "label": "2026-10-28 00:10"
+    },
+    {
+      "start_unix": 1793146800,
+      "end_unix_exclusive": 1793147400,
+      "count": 0,
+      "label": "2026-10-28 00:20"
+    },
+    {
+      "start_unix": 1793147400,
+      "end_unix_exclusive": 1793148000,
+      "count": 0,
+      "label": "2026-10-28 00:30"
+    },
+    {
+      "start_unix": 1793148000,
+      "end_unix_exclusive": 1793148600,
+      "count": 0,
+      "label": "2026-10-28 00:40"
+    },
+    {
+      "start_unix": 1793148600,
+      "end_unix_exclusive": 1793149200,
+      "count": 0,
+      "label": "2026-10-28 00:50"
+    },
+    {
+      "start_unix": 1793149200,
+      "end_unix_exclusive": 1793149800,
+      "count": 2,
+      "label": "2026-10-28 01:00"
+    },
+    {
+      "start_unix": 1793149800,
+      "end_unix_exclusive": 1793150400,
+      "count": 1,
+      "label": "2026-10-28 01:10"
+    },
+    {
+      "start_unix": 1793150400,
+      "end_unix_exclusive": 1793151000,
+      "count": 0,
+      "label": "2026-10-28 01:20"
+    },
+    {
+      "start_unix": 1793151000,
+      "end_unix_exclusive": 1793151600,
+      "count": 0,
+      "label": "2026-10-28 01:30"
+    },
+    {
+      "start_unix": 1793151600,
+      "end_unix_exclusive": 1793152200,
+      "count": 0,
+      "label": "2026-10-28 01:40"
+    },
+    {
+      "start_unix": 1793152200,
+      "end_unix_exclusive": 1793152800,
+      "count": 0,
+      "label": "2026-10-28 01:50"
+    },
+    {
+      "start_unix": 1793152800,
+      "end_unix_exclusive": 1793153400,
+      "count": 1,
+      "label": "2026-10-28 02:00"
+    },
+    {
+      "start_unix": 1793153400,
+      "end_unix_exclusive": 1793154000,
+      "count": 0,
+      "label": "2026-10-28 02:10"
+    },
+    {
+      "start_unix": 1793154000,
+      "end_unix_exclusive": 1793154600,
+      "count": 0,
+      "label": "2026-10-28 02:20"
+    },
+    {
+      "start_unix": 1793154600,
+      "end_unix_exclusive": 1793155200,
+      "count": 0,
+      "label": "2026-10-28 02:30"
+    },
+    {
+      "start_unix": 1793155200,
+      "end_unix_exclusive": 1793155800,
+      "count": 0,
+      "label": "2026-10-28 02:40"
+    },
+    {
+      "start_unix": 1793155800,
+      "end_unix_exclusive": 1793156400,
+      "count": 0,
+      "label": "2026-10-28 02:50"
+    },
+    {
+      "start_unix": 1793156400,
+      "end_unix_exclusive": 1793157000,
+      "count": 1,
+      "label": "2026-10-28 03:00"
+    },
+    {
+      "start_unix": 1793157000,
+      "end_unix_exclusive": 1793157600,
+      "count": 0,
+      "label": "2026-10-28 03:10"
+    },
+    {
+      "start_unix": 1793157600,
+      "end_unix_exclusive": 1793158200,
+      "count": 0,
+      "label": "2026-10-28 03:20"
+    },
+    {
+      "start_unix": 1793158200,
+      "end_unix_exclusive": 1793158800,
+      "count": 0,
+      "label": "2026-10-28 03:30"
+    },
+    {
+      "start_unix": 1793158800,
+      "end_unix_exclusive": 1793159400,
+      "count": 0,
+      "label": "2026-10-28 03:40"
+    },
+    {
+      "start_unix": 1793159400,
+      "end_unix_exclusive": 1793160000,
+      "count": 0,
+      "label": "2026-10-28 03:50"
+    },
+    {
+      "start_unix": 1793160000,
+      "end_unix_exclusive": 1793160600,
+      "count": 0,
+      "label": "2026-10-28 04:00"
+    },
+    {
+      "start_unix": 1793160600,
+      "end_unix_exclusive": 1793161200,
+      "count": 0,
+      "label": "2026-10-28 04:10"
+    },
+    {
+      "start_unix": 1793161200,
+      "end_unix_exclusive": 1793161800,
+      "count": 0,
+      "label": "2026-10-28 04:20"
+    },
+    {
+      "start_unix": 1793161800,
+      "end_unix_exclusive": 1793162400,
+      "count": 0,
+      "label": "2026-10-28 04:30"
+    },
+    {
+      "start_unix": 1793162400,
+      "end_unix_exclusive": 1793163000,
+      "count": 0,
+      "label": "2026-10-28 04:40"
+    },
+    {
+      "start_unix": 1793163000,
+      "end_unix_exclusive": 1793163600,
+      "count": 0,
+      "label": "2026-10-28 04:50"
+    },
+    {
+      "start_unix": 1793163600,
+      "end_unix_exclusive": 1793164200,
+      "count": 0,
+      "label": "2026-10-28 05:00"
+    },
+    {
+      "start_unix": 1793164200,
+      "end_unix_exclusive": 1793164800,
+      "count": 0,
+      "label": "2026-10-28 05:10"
+    },
+    {
+      "start_unix": 1793164800,
+      "end_unix_exclusive": 1793165400,
+      "count": 0,
+      "label": "2026-10-28 05:20"
+    },
+    {
+      "start_unix": 1793165400,
+      "end_unix_exclusive": 1793166000,
+      "count": 0,
+      "label": "2026-10-28 05:30"
+    },
+    {
+      "start_unix": 1793166000,
+      "end_unix_exclusive": 1793166600,
+      "count": 0,
+      "label": "2026-10-28 05:40"
+    },
+    {
+      "start_unix": 1793166600,
+      "end_unix_exclusive": 1793167200,
+      "count": 0,
+      "label": "2026-10-28 05:50"
+    },
+    {
+      "start_unix": 1793167200,
+      "end_unix_exclusive": 1793167800,
+      "count": 0,
+      "label": "2026-10-28 06:00"
+    },
+    {
+      "start_unix": 1793167800,
+      "end_unix_exclusive": 1793168400,
+      "count": 0,
+      "label": "2026-10-28 06:10"
+    },
+    {
+      "start_unix": 1793168400,
+      "end_unix_exclusive": 1793169000,
+      "count": 0,
+      "label": "2026-10-28 06:20"
+    },
+    {
+      "start_unix": 1793169000,
+      "end_unix_exclusive": 1793169600,
+      "count": 0,
+      "label": "2026-10-28 06:30"
+    },
+    {
+      "start_unix": 1793169600,
+      "end_unix_exclusive": 1793170200,
+      "count": 0,
+      "label": "2026-10-28 06:40"
+    },
+    {
+      "start_unix": 1793170200,
+      "end_unix_exclusive": 1793170800,
+      "count": 0,
+      "label": "2026-10-28 06:50"
+    },
+    {
+      "start_unix": 1793170800,
+      "end_unix_exclusive": 1793171400,
+      "count": 0,
+      "label": "2026-10-28 07:00"
+    },
+    {
+      "start_unix": 1793171400,
+      "end_unix_exclusive": 1793172000,
+      "count": 0,
+      "label": "2026-10-28 07:10"
+    },
+    {
+      "start_unix": 1793172000,
+      "end_unix_exclusive": 1793172600,
+      "count": 0,
+      "label": "2026-10-28 07:20"
+    },
+    {
+      "start_unix": 1793172600,
+      "end_unix_exclusive": 1793173200,
+      "count": 0,
+      "label": "2026-10-28 07:30"
+    },
+    {
+      "start_unix": 1793173200,
+      "end_unix_exclusive": 1793173800,
+      "count": 0,
+      "label": "2026-10-28 07:40"
+    },
+    {
+      "start_unix": 1793173800,
+      "end_unix_exclusive": 1793174400,
+      "count": 0,
+      "label": "2026-10-28 07:50"
+    },
+    {
+      "start_unix": 1793174400,
+      "end_unix_exclusive": 1793175000,
+      "count": 0,
+      "label": "2026-10-28 08:00"
+    },
+    {
+      "start_unix": 1793175000,
+      "end_unix_exclusive": 1793175600,
+      "count": 0,
+      "label": "2026-10-28 08:10"
+    },
+    {
+      "start_unix": 1793175600,
+      "end_unix_exclusive": 1793176200,
+      "count": 0,
+      "label": "2026-10-28 08:20"
+    },
+    {
+      "start_unix": 1793176200,
+      "end_unix_exclusive": 1793176800,
+      "count": 0,
+      "label": "2026-10-28 08:30"
+    },
+    {
+      "start_unix": 1793176800,
+      "end_unix_exclusive": 1793177400,
+      "count": 0,
+      "label": "2026-10-28 08:40"
+    },
+    {
+      "start_unix": 1793177400,
+      "end_unix_exclusive": 1793178000,
+      "count": 0,
+      "label": "2026-10-28 08:50"
+    },
+    {
+      "start_unix": 1793178000,
+      "end_unix_exclusive": 1793178600,
+      "count": 0,
+      "label": "2026-10-28 09:00"
+    },
+    {
+      "start_unix": 1793178600,
+      "end_unix_exclusive": 1793179200,
+      "count": 0,
+      "label": "2026-10-28 09:10"
+    },
+    {
+      "start_unix": 1793179200,
+      "end_unix_exclusive": 1793179800,
+      "count": 0,
+      "label": "2026-10-28 09:20"
+    },
+    {
+      "start_unix": 1793179800,
+      "end_unix_exclusive": 1793180400,
+      "count": 0,
+      "label": "2026-10-28 09:30"
+    },
+    {
+      "start_unix": 1793180400,
+      "end_unix_exclusive": 1793181000,
+      "count": 0,
+      "label": "2026-10-28 09:40"
+    },
+    {
+      "start_unix": 1793181000,
+      "end_unix_exclusive": 1793181600,
+      "count": 0,
+      "label": "2026-10-28 09:50"
+    },
+    {
+      "start_unix": 1793181600,
+      "end_unix_exclusive": 1793182200,
+      "count": 0,
+      "label": "2026-10-28 10:00"
+    },
+    {
+      "start_unix": 1793182200,
+      "end_unix_exclusive": 1793182800,
+      "count": 0,
+      "label": "2026-10-28 10:10"
+    },
+    {
+      "start_unix": 1793182800,
+      "end_unix_exclusive": 1793183400,
+      "count": 0,
+      "label": "2026-10-28 10:20"
+    },
+    {
+      "start_unix": 1793183400,
+      "end_unix_exclusive": 1793184000,
+      "count": 0,
+      "label": "2026-10-28 10:30"
+    },
+    {
+      "start_unix": 1793184000,
+      "end_unix_exclusive": 1793184600,
+      "count": 0,
+      "label": "2026-10-28 10:40"
+    },
+    {
+      "start_unix": 1793184600,
+      "end_unix_exclusive": 1793185200,
+      "count": 0,
+      "label": "2026-10-28 10:50"
+    },
+    {
+      "start_unix": 1793185200,
+      "end_unix_exclusive": 1793185800,
+      "count": 0,
+      "label": "2026-10-28 11:00"
+    },
+    {
+      "start_unix": 1793185800,
+      "end_unix_exclusive": 1793186400,
+      "count": 0,
+      "label": "2026-10-28 11:10"
+    },
+    {
+      "start_unix": 1793186400,
+      "end_unix_exclusive": 1793187000,
+      "count": 0,
+      "label": "2026-10-28 11:20"
+    },
+    {
+      "start_unix": 1793187000,
+      "end_unix_exclusive": 1793187600,
+      "count": 0,
+      "label": "2026-10-28 11:30"
+    },
+    {
+      "start_unix": 1793187600,
+      "end_unix_exclusive": 1793188200,
+      "count": 0,
+      "label": "2026-10-28 11:40"
+    },
+    {
+      "start_unix": 1793188200,
+      "end_unix_exclusive": 1793188800,
+      "count": 0,
+      "label": "2026-10-28 11:50"
+    },
+    {
+      "start_unix": 1793188800,
+      "end_unix_exclusive": 1793189400,
+      "count": 0,
+      "label": "2026-10-28 12:00"
+    },
+    {
+      "start_unix": 1793189400,
+      "end_unix_exclusive": 1793190000,
+      "count": 0,
+      "label": "2026-10-28 12:10"
+    },
+    {
+      "start_unix": 1793190000,
+      "end_unix_exclusive": 1793190600,
+      "count": 0,
+      "label": "2026-10-28 12:20"
+    },
+    {
+      "start_unix": 1793190600,
+      "end_unix_exclusive": 1793191200,
+      "count": 0,
+      "label": "2026-10-28 12:30"
+    },
+    {
+      "start_unix": 1793191200,
+      "end_unix_exclusive": 1793191800,
+      "count": 0,
+      "label": "2026-10-28 12:40"
+    },
+    {
+      "start_unix": 1793191800,
+      "end_unix_exclusive": 1793192400,
+      "count": 0,
+      "label": "2026-10-28 12:50"
+    },
+    {
+      "start_unix": 1793192400,
+      "end_unix_exclusive": 1793193000,
+      "count": 0,
+      "label": "2026-10-28 13:00"
+    },
+    {
+      "start_unix": 1793193000,
+      "end_unix_exclusive": 1793193600,
+      "count": 0,
+      "label": "2026-10-28 13:10"
+    },
+    {
+      "start_unix": 1793193600,
+      "end_unix_exclusive": 1793194200,
+      "count": 0,
+      "label": "2026-10-28 13:20"
+    },
+    {
+      "start_unix": 1793194200,
+      "end_unix_exclusive": 1793194800,
+      "count": 0,
+      "label": "2026-10-28 13:30"
+    },
+    {
+      "start_unix": 1793194800,
+      "end_unix_exclusive": 1793195400,
+      "count": 0,
+      "label": "2026-10-28 13:40"
+    },
+    {
+      "start_unix": 1793195400,
+      "end_unix_exclusive": 1793196000,
+      "count": 0,
+      "label": "2026-10-28 13:50"
+    },
+    {
+      "start_unix": 1793196000,
+      "end_unix_exclusive": 1793196600,
+      "count": 0,
+      "label": "2026-10-28 14:00"
+    },
+    {
+      "start_unix": 1793196600,
+      "end_unix_exclusive": 1793197200,
+      "count": 0,
+      "label": "2026-10-28 14:10"
+    },
+    {
+      "start_unix": 1793197200,
+      "end_unix_exclusive": 1793197800,
+      "count": 0,
+      "label": "2026-10-28 14:20"
+    },
+    {
+      "start_unix": 1793197800,
+      "end_unix_exclusive": 1793198400,
+      "count": 0,
+      "label": "2026-10-28 14:30"
+    },
+    {
+      "start_unix": 1793198400,
+      "end_unix_exclusive": 1793199000,
+      "count": 0,
+      "label": "2026-10-28 14:40"
+    },
+    {
+      "start_unix": 1793199000,
+      "end_unix_exclusive": 1793199600,
+      "count": 0,
+      "label": "2026-10-28 14:50"
+    },
+    {
+      "start_unix": 1793199600,
+      "end_unix_exclusive": 1793200200,
+      "count": 0,
+      "label": "2026-10-28 15:00"
+    },
+    {
+      "start_unix": 1793200200,
+      "end_unix_exclusive": 1793200800,
+      "count": 0,
+      "label": "2026-10-28 15:10"
+    },
+    {
+      "start_unix": 1793200800,
+      "end_unix_exclusive": 1793201400,
+      "count": 0,
+      "label": "2026-10-28 15:20"
+    },
+    {
+      "start_unix": 1793201400,
+      "end_unix_exclusive": 1793202000,
+      "count": 0,
+      "label": "2026-10-28 15:30"
+    },
+    {
+      "start_unix": 1793202000,
+      "end_unix_exclusive": 1793202600,
+      "count": 0,
+      "label": "2026-10-28 15:40"
+    },
+    {
+      "start_unix": 1793202600,
+      "end_unix_exclusive": 1793203200,
+      "count": 0,
+      "label": "2026-10-28 15:50"
+    },
+    {
+      "start_unix": 1793203200,
+      "end_unix_exclusive": 1793203800,
+      "count": 0,
+      "label": "2026-10-28 16:00"
+    },
+    {
+      "start_unix": 1793203800,
+      "end_unix_exclusive": 1793204400,
+      "count": 0,
+      "label": "2026-10-28 16:10"
+    },
+    {
+      "start_unix": 1793204400,
+      "end_unix_exclusive": 1793205000,
+      "count": 0,
+      "label": "2026-10-28 16:20"
+    },
+    {
+      "start_unix": 1793205000,
+      "end_unix_exclusive": 1793205600,
+      "count": 0,
+      "label": "2026-10-28 16:30"
+    },
+    {
+      "start_unix": 1793205600,
+      "end_unix_exclusive": 1793206200,
+      "count": 0,
+      "label": "2026-10-28 16:40"
+    },
+    {
+      "start_unix": 1793206200,
+      "end_unix_exclusive": 1793206800,
+      "count": 0,
+      "label": "2026-10-28 16:50"
+    },
+    {
+      "start_unix": 1793206800,
+      "end_unix_exclusive": 1793207400,
+      "count": 0,
+      "label": "2026-10-28 17:00"
+    },
+    {
+      "start_unix": 1793207400,
+      "end_unix_exclusive": 1793208000,
+      "count": 0,
+      "label": "2026-10-28 17:10"
+    },
+    {
+      "start_unix": 1793208000,
+      "end_unix_exclusive": 1793208600,
+      "count": 0,
+      "label": "2026-10-28 17:20"
+    },
+    {
+      "start_unix": 1793208600,
+      "end_unix_exclusive": 1793209200,
+      "count": 0,
+      "label": "2026-10-28 17:30"
+    },
+    {
+      "start_unix": 1793209200,
+      "end_unix_exclusive": 1793209800,
+      "count": 0,
+      "label": "2026-10-28 17:40"
+    },
+    {
+      "start_unix": 1793209800,
+      "end_unix_exclusive": 1793210400,
+      "count": 0,
+      "label": "2026-10-28 17:50"
+    },
+    {
+      "start_unix": 1793210400,
+      "end_unix_exclusive": 1793211000,
+      "count": 0,
+      "label": "2026-10-28 18:00"
+    },
+    {
+      "start_unix": 1793211000,
+      "end_unix_exclusive": 1793211600,
+      "count": 0,
+      "label": "2026-10-28 18:10"
+    },
+    {
+      "start_unix": 1793211600,
+      "end_unix_exclusive": 1793212200,
+      "count": 0,
+      "label": "2026-10-28 18:20"
+    },
+    {
+      "start_unix": 1793212200,
+      "end_unix_exclusive": 1793212800,
+      "count": 0,
+      "label": "2026-10-28 18:30"
+    },
+    {
+      "start_unix": 1793212800,
+      "end_unix_exclusive": 1793213400,
+      "count": 0,
+      "label": "2026-10-28 18:40"
+    },
+    {
+      "start_unix": 1793213400,
+      "end_unix_exclusive": 1793214000,
+      "count": 0,
+      "label": "2026-10-28 18:50"
+    },
+    {
+      "start_unix": 1793214000,
+      "end_unix_exclusive": 1793214600,
+      "count": 0,
+      "label": "2026-10-28 19:00"
+    },
+    {
+      "start_unix": 1793214600,
+      "end_unix_exclusive": 1793215200,
+      "count": 0,
+      "label": "2026-10-28 19:10"
+    },
+    {
+      "start_unix": 1793215200,
+      "end_unix_exclusive": 1793215800,
+      "count": 0,
+      "label": "2026-10-28 19:20"
+    },
+    {
+      "start_unix": 1793215800,
+      "end_unix_exclusive": 1793216400,
+      "count": 0,
+      "label": "2026-10-28 19:30"
+    },
+    {
+      "start_unix": 1793216400,
+      "end_unix_exclusive": 1793217000,
+      "count": 0,
+      "label": "2026-10-28 19:40"
+    },
+    {
+      "start_unix": 1793217000,
+      "end_unix_exclusive": 1793217600,
+      "count": 0,
+      "label": "2026-10-28 19:50"
+    },
+    {
+      "start_unix": 1793217600,
+      "end_unix_exclusive": 1793218200,
+      "count": 0,
+      "label": "2026-10-28 20:00"
+    },
+    {
+      "start_unix": 1793218200,
+      "end_unix_exclusive": 1793218800,
+      "count": 0,
+      "label": "2026-10-28 20:10"
+    },
+    {
+      "start_unix": 1793218800,
+      "end_unix_exclusive": 1793219400,
+      "count": 0,
+      "label": "2026-10-28 20:20"
+    },
+    {
+      "start_unix": 1793219400,
+      "end_unix_exclusive": 1793220000,
+      "count": 0,
+      "label": "2026-10-28 20:30"
+    },
+    {
+      "start_unix": 1793220000,
+      "end_unix_exclusive": 1793220600,
+      "count": 0,
+      "label": "2026-10-28 20:40"
+    },
+    {
+      "start_unix": 1793220600,
+      "end_unix_exclusive": 1793221200,
+      "count": 0,
+      "label": "2026-10-28 20:50"
+    },
+    {
+      "start_unix": 1793221200,
+      "end_unix_exclusive": 1793221800,
+      "count": 0,
+      "label": "2026-10-28 21:00"
+    },
+    {
+      "start_unix": 1793221800,
+      "end_unix_exclusive": 1793222400,
+      "count": 0,
+      "label": "2026-10-28 21:10"
+    },
+    {
+      "start_unix": 1793222400,
+      "end_unix_exclusive": 1793223000,
+      "count": 0,
+      "label": "2026-10-28 21:20"
+    },
+    {
+      "start_unix": 1793223000,
+      "end_unix_exclusive": 1793223600,
+      "count": 0,
+      "label": "2026-10-28 21:30"
+    },
+    {
+      "start_unix": 1793223600,
+      "end_unix_exclusive": 1793224200,
+      "count": 0,
+      "label": "2026-10-28 21:40"
+    },
+    {
+      "start_unix": 1793224200,
+      "end_unix_exclusive": 1793224800,
+      "count": 0,
+      "label": "2026-10-28 21:50"
+    },
+    {
+      "start_unix": 1793224800,
+      "end_unix_exclusive": 1793225400,
+      "count": 0,
+      "label": "2026-10-28 22:00"
+    },
+    {
+      "start_unix": 1793225400,
+      "end_unix_exclusive": 1793226000,
+      "count": 0,
+      "label": "2026-10-28 22:10"
+    },
+    {
+      "start_unix": 1793226000,
+      "end_unix_exclusive": 1793226600,
+      "count": 0,
+      "label": "2026-10-28 22:20"
+    },
+    {
+      "start_unix": 1793226600,
+      "end_unix_exclusive": 1793227200,
+      "count": 0,
+      "label": "2026-10-28 22:30"
+    },
+    {
+      "start_unix": 1793227200,
+      "end_unix_exclusive": 1793227800,
+      "count": 0,
+      "label": "2026-10-28 22:40"
+    },
+    {
+      "start_unix": 1793227800,
+      "end_unix_exclusive": 1793228400,
+      "count": 0,
+      "label": "2026-10-28 22:50"
+    },
+    {
+      "start_unix": 1793228400,
+      "end_unix_exclusive": 1793229000,
+      "count": 0,
+      "label": "2026-10-28 23:00"
+    },
+    {
+      "start_unix": 1793229000,
+      "end_unix_exclusive": 1793229600,
+      "count": 0,
+      "label": "2026-10-28 23:10"
+    },
+    {
+      "start_unix": 1793229600,
+      "end_unix_exclusive": 1793230200,
+      "count": 0,
+      "label": "2026-10-28 23:20"
+    },
+    {
+      "start_unix": 1793230200,
+      "end_unix_exclusive": 1793230800,
+      "count": 0,
+      "label": "2026-10-28 23:30"
+    },
+    {
+      "start_unix": 1793230800,
+      "end_unix_exclusive": 1793231400,
+      "count": 0,
+      "label": "2026-10-28 23:40"
+    },
+    {
+      "start_unix": 1793231400,
+      "end_unix_exclusive": 1793232000,
+      "count": 0,
+      "label": "2026-10-28 23:50"
+    }
+  ],
+  "avatars": {},
+  "synthetic_example": true,
+  "edition": "brief"
+}

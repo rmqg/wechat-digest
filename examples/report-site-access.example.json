@@ -1,0 +1,7 @@
+{
+  "chat_id": "REPLACE_WITH_EXACT_GROUP_ID",
+  "url": "https://reports.example.invalid/",
+  "username": "REPLACE_WITH_ACCESS_USERNAME",
+  "password": "REPLACE_WITH_PRIVATE_ACCESS_PASSWORD",
+  "enabled_from": 0
+}

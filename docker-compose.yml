@@ -1,0 +1,33 @@
+services:
+  desktop:
+    image: ${WECHAT_DESKTOP_IMAGE:-ghcr.io/nickrunning/wechat-selkies:0.0.12-minimal}
+    container_name: ${WECHAT_DESKTOP_CONTAINER:-wechat-digest-desktop}
+    restart: unless-stopped
+    shm_size: ${DESKTOP_SHM_SIZE:-1gb}
+    ports:
+      - "${DESKTOP_BIND:-127.0.0.1}:${DESKTOP_PORT:-3000}:3000"
+    volumes:
+      - ./runtime/gui:/config
+    environment:
+      PUID: ${PUID:-1000}
+      PGID: ${PGID:-1000}
+      TZ: ${TZ:-Asia/Shanghai}
+      LC_ALL: zh_CN.UTF-8
+      CUSTOM_USER: ${DESKTOP_USER:-operator}
+      PASSWORD: ${DESKTOP_PASSWORD:?Set a strong DESKTOP_PASSWORD in .env before starting desktop}
+      AUTO_START_WECHAT: "true"
+      AUTO_START_QQ: "false"
+  runtime:
+    image: ${WECHAT_RUNTIME_IMAGE:-wechat-digest-runtime:1.0.0}
+    build:
+      context: .
+      dockerfile: Dockerfile
+    profiles: [tools]
+    network_mode: none
+    read_only: true
+    user: "${PUID:-1000}:${PGID:-1000}"
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    tmpfs:
+      - /tmp:rw,nosuid,size=64m
+    command: [/tool/digest.py, --help]

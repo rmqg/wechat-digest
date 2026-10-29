@@ -1,0 +1,2 @@
+rapidocr-onnxruntime==1.4.4 \
+    --hash=sha256:971d7d5f223a7a808662229df1ef69893809d8457d834e6373d3854bc1782cbf

@@ -1,0 +1,40 @@
+name: verify
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  source:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python: ['3.11', '3.12']
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+          cache: pip
+          cache-dependency-path: requirements-dev.txt
+      - run: python -m pip install -r requirements-dev.txt
+      - name: Offline consumer behavior tests
+        env:
+          PYTHONPATH: .:deployment:memory:agent_console:deployment/vendor
+        run: python -m pytest -q
+      - name: Documentation, examples and safe CLI help
+        run: python scripts/check-docs.py --cli
+      - name: Redacted release boundary audit
+        run: python scripts/audit-release.py
+      - name: Real synthetic rendering and decryption artifacts
+        run: python scripts/generate-demo.py --output "$RUNNER_TEMP/wechat-demo"
+      - name: Compose contract (no services started)
+        env:
+          DESKTOP_PASSWORD: CI_TEST_ONLY_DO_NOT_USE_FOR_A_REAL_DESKTOP
+        run: docker compose config --quiet
+      - name: Installer syntax and dry-run only
+        run: sh -n scripts/install-openwrt.sh && sh scripts/install-openwrt.sh --dry-run

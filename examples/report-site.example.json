@@ -1,0 +1,8 @@
+{
+  "host": "reports.example.invalid",
+  "user": "REPLACE_WITH_REMOTE_USER",
+  "port": 22,
+  "identity_file": "secrets/report-site-ed25519",
+  "known_hosts": "secrets/report-site-known-hosts",
+  "remote_path": "public/wechat-digest"
+}

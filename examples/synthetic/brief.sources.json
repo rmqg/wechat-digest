@@ -1,0 +1,59 @@
+{
+  "synthetic_example": true,
+  "group_id": "synthetic-demo-chat",
+  "window": {
+    "start_unix": 1793145600,
+    "end_unix_exclusive": 1793232000
+  },
+  "messages": [
+    {
+      "message_uid": "SYN-M001",
+      "reference": "M001",
+      "author_id": "synthetic-alex",
+      "author": "林小满",
+      "timestamp": 1793149200,
+      "type": "text",
+      "text": "周末的社区花园活动改到周六上午，入口旁边集合。"
+    },
+    {
+      "message_uid": "SYN-M002",
+      "reference": "M002",
+      "author_id": "synthetic-bo",
+      "author": "周禾",
+      "timestamp": 1793149500,
+      "type": "text",
+      "text": "收到，我会带上工具箱。"
+    },
+    {
+      "message_uid": "SYN-M003",
+      "reference": "M003",
+      "author_id": "synthetic-cen",
+      "author": "陈星",
+      "timestamp": 1793149800,
+      "type": "reply",
+      "text": "我可以负责准备标签。\n引用 林小满：周末的社区花园活动改到周六上午，入口旁边集合。",
+      "reply_to": "SYN-M001"
+    },
+    {
+      "message_uid": "SYN-M004",
+      "reference": "M004",
+      "author_id": "synthetic-alex",
+      "author": "林小满",
+      "timestamp": 1793152800,
+      "type": "forward",
+      "text": "转发：社区花园分区安排\nA区：香草\nB区：花苗",
+      "forward_xml": "forward.xml"
+    },
+    {
+      "message_uid": "SYN-M005",
+      "reference": "M005",
+      "author_id": "synthetic-bo",
+      "author": "周禾",
+      "timestamp": 1793156400,
+      "type": "image",
+      "text": "示意图已附（合成图，不是聊天原图）。",
+      "image": "garden-plan.png",
+      "missing_image_reference": "synthetic-missing-image.png"
+    }
+  ]
+}

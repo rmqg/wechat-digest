@@ -1,0 +1,15 @@
+@nas_image path_regexp nas_image ^/assets/[0-9a-f]{64}\.(png|jpg|jpeg|gif|webp)$
+handle @nas_image {
+    reverse_proxy https://{$IMAGE_ORIGIN_HOST} {
+        header_up Host {$IMAGE_ORIGIN_HOST}
+        header_up -Cookie
+        import /config/wxrepo/image-origin-auth.caddy
+        transport http {
+            dial_timeout 10s
+            response_header_timeout 20s
+        }
+    }
+}
+handle {
+    file_server
+}

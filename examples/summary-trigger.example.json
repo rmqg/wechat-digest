@@ -1,0 +1,6 @@
+{
+  "chat_id": "REPLACE_WITH_EXACT_GROUP_ID",
+  "bot_username": "REPLACE_WITH_BOT_ACCOUNT_ID",
+  "bot_names": ["REPLACE_WITH_BOT_DISPLAY_NAME"],
+  "enabled_from": 0
+}

@@ -1,0 +1,5 @@
+{
+  "warning": "PUBLIC TEST-ONLY — synthetic fixture integrity material; never valid for real data",
+  "hmac_sha256_file": "76eeb7291a08d09e3d8c2679874ff423d25f45d45cc8b2278bfe2cdd1464601f",
+  "tamper_test_byte_offset": 128
+}

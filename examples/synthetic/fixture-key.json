@@ -1,0 +1,8 @@
+{
+  "warning": "PUBLIC TEST-ONLY — synthetic fixture integrity material; never valid for real data",
+  "key_utf8": "PUBLIC-TEST-ONLY-not-a-real-WeChat-key",
+  "salt_hex": "00112233445566778899aabbccddeeff",
+  "derived_enc_key_hex": "aad9272dd880fec8c2e134a09d3548a204ccb8a72ca7f765fe26bd0b95eca69a",
+  "derived_hmac_key_hex": "1768eab044223341a3f023889672aaa69eefd1037639634bca3c61601d4f7334",
+  "cipher": "SQLCipher v4 compatible; page_size=4096; reserve=80; HMAC=SHA-512"
+}

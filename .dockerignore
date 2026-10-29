@@ -1,0 +1,12 @@
+.git
+.env
+.env.*
+!.env.example
+runtime
+config
+backups
+exports
+__pycache__
+*.pyc
+.pytest_cache
+.venv

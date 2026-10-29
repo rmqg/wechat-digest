@@ -1,0 +1,6 @@
+{
+  "assets_dir": "runtime/report-site/assets",
+  "token": "REPLACE_WITH_RANDOM_PRIVATE_TOKEN",
+  "bind": "127.0.0.1",
+  "port": 8099
+}

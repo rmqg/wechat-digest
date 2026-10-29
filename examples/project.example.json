@@ -1,0 +1,23 @@
+{
+  "group": {
+    "id": "REPLACE_WITH_YOUR_EXACT_GROUP_ID",
+    "name": "REPLACE_WITH_YOUR_EXACT_GROUP_NAME"
+  },
+  "bot": {
+    "username": "REPLACE_WITH_YOUR_BOT_ACCOUNT_ID",
+    "names": []
+  },
+  "report_prefix": "wechat-digest",
+  "desktop_container": "wechat-digest-desktop",
+  "public_url": null,
+  "image_origin_host": null,
+  "daily_hour": 5,
+  "timezone": "Asia/Shanghai",
+  "worker_uid": 1000,
+  "worker_gid": 1000,
+  "images": {
+    "runtime": "wechat-digest-runtime:1.0.0",
+    "keyscan": "wechat-digest-runtime:1.0.0",
+    "desktop": "ghcr.io/nickrunning/wechat-selkies:0.0.12-minimal"
+  }
+}
