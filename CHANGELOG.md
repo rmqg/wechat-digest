@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.1.1
+
+- Persist each QQ task's prepared report paths and PNG SHA-256 fingerprints before sending. Resume only unsent editions from those fixed artifacts; late history sync never regenerates or overwrites a confirmed edition.
+- Stop on missing or changed prepared files, refuse unsafe partial-delivery recovery without a manifest, and preserve completion when both editions already have confirmed receipts.
+- Give separate requests for the same window separate output namespaces; the generation CLI accepts a validated task ID or creates a fresh UUID.
+
 ## 1.1.0
 
 - Add configurable QQ OneBot v11/NapCat history collection, image/OCR/web context, independently generated brief/review reports, real message-receipt verification and a deterministic offline fictional QQ demo.

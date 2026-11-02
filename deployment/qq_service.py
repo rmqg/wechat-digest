@@ -6,6 +6,7 @@ import argparse
 import fcntl
 import datetime as dt
 import json
+import hashlib
 import os
 from pathlib import Path
 import re
@@ -613,6 +614,8 @@ class QQService:
                    "--start", str(args["start"]), "--end", str(args["end"])]
         if self.fallback_config:
             command.extend(("--fallback-config", str(self.fallback_config)))
+        if args.get("task_id"):
+            command.extend(("--request-id", str(args["task_id"])))
         completed = subprocess.run(command, check=False, capture_output=True, text=True, timeout=3600)
         if completed.returncode != 0:
             if re.search(r'\bHTTP\s+400\b', completed.stderr or ''):
@@ -664,6 +667,36 @@ class QQService:
             paths[edition]["png"] = str(png)
         return paths
 
+    def _prepared_editions(self, task, messages):
+        key = 'prepared:' + task['id']
+        saved = self._get_meta(key)
+        if saved is not None:
+            try:
+                prepared = json.loads(saved)
+                paths = self._edition_paths({'editions': prepared['paths']})
+                for edition in ('brief', 'review'):
+                    png = Path(paths[edition]['png']).resolve()
+                    if not png.is_relative_to(self.reports_dir.resolve()) or hashlib.sha256(png.read_bytes()).hexdigest() != prepared['png_sha256'][edition]:
+                        raise ValueError('prepared image changed')
+                return paths
+            except (OSError, ValueError, KeyError, TypeError) as exc:
+                raise PermanentTaskError('prepared reports failed integrity verification; refusing regeneration') from exc
+        if any(self._receipt(task['id'], edition)['state'] in ('sent', 'unknown', 'sending') for edition in ('brief', 'review')):
+            raise PermanentTaskError('submitted or uncertain delivery has no prepared manifest; manual verification required')
+        sources_path = self._write_sources(task, messages, self.reports_dir)
+        result = self.digest_runner({'task_id': task['id'], 'start': int(task['start']), 'end': int(task['end']),
+                                     'sources_path': sources_path, 'output_dir': self.reports_dir, 'messages': messages})
+        self._secure_report_outputs()
+        paths = self._edition_paths(result)
+        fingerprints = {}
+        for edition in ('brief', 'review'):
+            png = Path(paths[edition]['png']).resolve()
+            if not png.is_relative_to(self.reports_dir.resolve()):
+                raise PermanentTaskError('report outside the configured group directory')
+            fingerprints[edition] = hashlib.sha256(png.read_bytes()).hexdigest()
+        self._set_meta(key, json.dumps({'paths': paths, 'png_sha256': fingerprints}))
+        return paths
+
     def _receipt(self, task_id: str, edition: str) -> dict[str, Any]:
         with self._db_lock, self._connect() as db:
             row = db.execute("SELECT * FROM receipts WHERE task_id=? AND edition=?", (task_id, edition)).fetchone()
@@ -704,6 +737,11 @@ class QQService:
     def process_task(self, task: dict[str, Any], now: int | None = None) -> str:
         now = int(self.clock()) if now is None else int(now)
         task_id = task["id"]
+        if all(self._receipt(task_id, edition)['state'] == 'sent' for edition in ('brief', 'review')):
+            with self._db_lock, self._connect() as db:
+                db.execute("UPDATE tasks SET status='complete',error_type=NULL WHERE id=?", (task_id,))
+                db.commit()
+            return 'complete'
         start, end = int(task["start"]), int(task["end"])
         if end <= start or end - start > MAX_WINDOW:
             with self._db_lock, self._connect() as db:
@@ -718,12 +756,7 @@ class QQService:
             return "no_messages"
         output_dir = self.reports_dir
         try:
-            sources_path = self._write_sources(task, messages, output_dir)
-            result = self.digest_runner({"task_id": task_id, "start": start, "end": end,
-                                         "sources_path": sources_path, "output_dir": output_dir,
-                                         "messages": messages})
-            self._secure_report_outputs()
-            paths = self._edition_paths(result)
+            paths = self._prepared_editions(task, messages)
             for edition in ("brief", "review"):
                 self._send_edition(task_id, edition, paths[edition]["png"], now)
         except PermanentTaskError as exc:

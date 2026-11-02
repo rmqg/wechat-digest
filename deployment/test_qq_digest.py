@@ -9,6 +9,14 @@ from deployment import qq_digest
 
 
 class QQDigestInputTests(unittest.TestCase):
+    def test_distinct_requests_for_one_window_have_separate_safe_paths(self):
+        first = qq_digest._output_stem(10001, 1000, 2000, 'a' * 32)
+        second = qq_digest._output_stem(10001, 1000, 2000, 'b' * 32)
+        self.assertNotEqual(first, second)
+        self.assertEqual(Path(first).name, first)
+        with self.assertRaises(ValueError):
+            qq_digest._output_stem(10001, 1000, 2000, '../../escape')
+
     def test_window_must_be_positive_and_at_most_seven_days(self):
         with tempfile.TemporaryDirectory() as root:
             args = argparse.Namespace(group_id=10001, start=100, end=100, sources_json=Path(root) / 'missing')

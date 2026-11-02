@@ -27,7 +27,7 @@ install -m 600 /dev/null /srv/qq-digest/runtime/onebot.token
 python3 scripts/install-ocr.py --target /srv/qq-digest/ocr-deps --wheel-dir /srv/qq-digest/ocr-wheels
 # 运行 worker 时将 /srv/qq-digest/ocr-deps 加入 PYTHONPATH；已有 wheel 可用 --offline 安装。
 # 或构建包含该 OCR 层的 Linux x86-64 工具镜像：
-docker build --build-arg WITH_OCR=1 -t wechat-digest-runtime:1.1.0 .
+docker build --build-arg WITH_OCR=1 -t wechat-digest-runtime:1.1.1 .
 ```
 
 相对路径以 JSON 配置文件所在目录为基准。服务配置至少应明确 `onebot_url`、`onebot_token_file`、`group_id`、`group_name`、`expected_self_id`、`bot_names`、`runtime_dir`、`reports_dir`、`model_config`、`enabled_from` 和 `daily_hour`。`enabled_from` 是 Unix 秒时间戳，防止启用前的历史消息被当作新触发。模板中的群、账号、密码、URL 和 token 路径均为虚构/占位，必须替换；不得将真实 token 或 API key 放入仓库。
@@ -53,6 +53,8 @@ QQ worker 使用已鉴权的 OneBot v11 WebSocket API；网站服务才使用 HT
 - 默认自定窗口最近 24 小时。请求可指定时间长度，最大 7 天（168 小时）；超限或无效请求被拒绝，不会静默缩短成 7 天。超过窗口上限需缩小窗口后重新请求。
 - 触发请求使用持久化任务及逐版发送回执防重。确认送达后绝不自动重发；提交后无法确认的结果按未知状态停止，先核实 QQ 端实际消息再人工处理。取消任务只取消尚未发送的工作；发送中/结果未知不能撤销已提交的消息。
 - 报告为空时不得生成/投递空白摘要；拒绝发送不是成功回执。永久不可重试的请求会终止并需修正输入，暂时性网络/API故障按有限退避恢复。
+- 两版生成后，先持久化任务对应的路径与 PNG SHA-256，再提交发送。续发只读这组固定产物，不重新调用模型、改写源快照或覆盖已确认版本；迟到同步的消息只进入新任务。固定产物缺失、越界或指纹不符时停止并人工核查，不能重新生成冒充原版。旧任务已提交或结果未知但没有固定产物记录时也停止；两版已有确认回执的任务可直接恢复为完成，不重发。
+- 每个任务使用独立产物名，避免同窗口不同请求互相覆盖。生成 CLI 的 `--request-id` 接受 32 或 64 位小写十六进制任务标识；省略时生成新 UUID。服务传入持久任务 ID；不要对已确认发送的任务手动重跑生成 CLI，也不要修改任务 ID 来绕过发送状态。
 
 ## Web 报告服务与共用入口
 

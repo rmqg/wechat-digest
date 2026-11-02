@@ -16,6 +16,7 @@ import shutil
 import socket
 import sys
 import urllib.error
+import uuid
 import urllib.parse
 import urllib.request
 
@@ -461,6 +462,13 @@ def attach_source_assets(report_paths, sources_snapshot, runtime_dir) -> dict:
     return {'reports': len(report_paths), 'images_attached': attached}
 
 
+def _output_stem(group_id, start, end, request_id=None):
+    request_id = uuid.uuid4().hex if request_id is None else request_id
+    if not isinstance(request_id, str) or len(request_id) not in (32, 64) or any(char not in '0123456789abcdef' for char in request_id):
+        raise ValueError('request-id must be 32 or 64 lowercase hexadecimal characters')
+    return f'qq-{group_id}-{start}-{end}-{request_id}'
+
+
 def _parse_args(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--sources-json', type=Path, required=True)
@@ -468,6 +476,7 @@ def _parse_args(argv=None):
     parser.add_argument('--fallback-config', type=Path)
     parser.add_argument('--runtime-dir', type=Path, required=True)
     parser.add_argument('--group-id', type=int, required=True)
+    parser.add_argument("--request-id")
     parser.add_argument('--output-dir', type=Path, required=True)
     parser.add_argument('--start', type=int, required=True)
     parser.add_argument('--end', type=int, required=True)
@@ -540,7 +549,7 @@ def run(args) -> dict:
                  for edition in ('brief', 'review')}
     avatars = _group_avatar(runtime, normalized, args.group_id)
     paths, reports = {}, {}
-    base = f'qq-{args.group_id}-{args.start}-{args.end}'
+    base = _output_stem(args.group_id, args.start, args.end, getattr(args, "request_id", None))
     for edition in ('brief', 'review'):
         report = _build_report(normalized, snapshot, args.group_id, args.start, args.end, summaries[edition], edition, avatars)
         if image_counts:

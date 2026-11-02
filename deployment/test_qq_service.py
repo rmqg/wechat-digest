@@ -48,6 +48,59 @@ class FakeClient:
 
 
 class QQServiceTests(unittest.TestCase):
+    def test_legacy_unknown_submission_without_manifest_is_not_regenerated(self):
+        self.service.save_messages([self.message()])
+        task_id = self.service.enqueue_request(1_000_000, 3600)
+        with self.service._connect() as db:
+            db.execute("UPDATE receipts SET state='unknown' WHERE task_id=? AND edition='brief'", (task_id,))
+            db.commit()
+        def regenerate(_):
+            raise AssertionError('an uncertain legacy submission requires manual verification')
+        self.service.digest_runner = regenerate
+        self.assertEqual(self.service.process_next_task(now=self.now), 'rejected')
+        self.assertEqual(self.shared['sent'], [])
+        receipts = {row['edition']: row['state'] for row in self.service.status()['receipts']}
+        self.assertEqual(receipts['brief'], 'unknown')
+
+    def test_confirmed_pair_remains_complete_without_a_usable_manifest(self):
+        self.service.save_messages([self.message()])
+        task_id = self.service.enqueue_request(1_000_000, 3600)
+        self.assertEqual(self.service.process_next_task(now=self.now), 'complete')
+        self.service._set_meta('prepared:' + task_id, '{}')
+        def regenerate(_):
+            raise AssertionError('confirmed deliveries need no regeneration')
+        self.service.digest_runner = regenerate
+        before = list(self.shared['sent'])
+        self.assertEqual(self.service.process_task(self.service.status()['tasks'][0], now=self.now + 1), 'complete')
+        self.assertEqual(self.shared['sent'], before)
+
+    def test_late_records_do_not_regenerate_partially_delivered_reports(self):
+        self.shared['failures']['review.png'] = 1
+        self.service.save_messages([self.message()])
+        self.service.enqueue_request(1_000_000, 3600)
+        self.assertEqual(self.service.process_next_task(now=self.now), 'pending')
+        brief = self.service.reports_dir / 'brief.png'
+        original_image = brief.read_bytes()
+        original_sources = (self.service.reports_dir / 'sources.json').read_bytes()
+        self.service.save_messages([self.message(uid='late-sync', timestamp=999_950)])
+        def regenerate(_):
+            raise AssertionError('a prepared bundle must not be regenerated')
+        self.service.digest_runner = regenerate
+        self.assertEqual(self.service.process_next_task(now=self.now + 100), 'complete')
+        self.assertEqual(brief.read_bytes(), original_image)
+        self.assertEqual((self.service.reports_dir / 'sources.json').read_bytes(), original_sources)
+        self.assertEqual([name for _, name in self.shared['sent']].count('brief.png'), 1)
+
+    def test_changed_prepared_image_stops_without_resending_or_regenerating(self):
+        self.shared['failures']['review.png'] = 1
+        self.service.save_messages([self.message()])
+        self.service.enqueue_request(1_000_000, 3600)
+        self.assertEqual(self.service.process_next_task(now=self.now), 'pending')
+        (self.service.reports_dir / 'brief.png').write_bytes(b'changed externally')
+        before = list(self.shared['sent'])
+        self.assertEqual(self.service.process_next_task(now=self.now + 100), 'rejected')
+        self.assertEqual(self.shared['sent'], before)
+
     def test_invalid_model_request_is_terminal_but_server_failure_can_retry(self):
         from unittest.mock import patch
         import subprocess

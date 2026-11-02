@@ -18,7 +18,7 @@ services:
       AUTO_START_WECHAT: "true"
       AUTO_START_QQ: "false"
   runtime:
-    image: ${WECHAT_RUNTIME_IMAGE:-wechat-digest-runtime:1.1.0}
+    image: ${WECHAT_RUNTIME_IMAGE:-wechat-digest-runtime:1.1.1}
     build:
       context: .
       dockerfile: Dockerfile
