@@ -27,7 +27,7 @@ chmod 0600 runtime/project.json
 
 ```sh
 docker compose --profile tools build runtime
-docker image inspect --format '{{.Id}}' wechat-digest-runtime:1.0.0
+docker image inspect --format '{{.Id}}' wechat-digest-runtime:1.1.0
 ```
 
 上一步的项目配置已指定本机镜像；Compose 默认 desktop image 是 `ghcr.io/nickrunning/wechat-selkies:0.0.12-minimal`，须在审阅来源/架构后使用。限制 `.env` 为 `0600`，不要在命令行/history 回显密码。启动桌面：

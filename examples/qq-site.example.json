@@ -1,0 +1,13 @@
+{
+  "bind": "127.0.0.1",
+  "port": 0,
+  "socket_path": "/config/private/qq-demo.sock",
+  "groups": {
+    "1000000001": {
+      "name": "合成演示群（请替换）",
+      "username": "qq_demo_account",
+      "password_scrypt": "REPLACE_WITH_HASH_FROM_--hash-password",
+      "reports_dir": "./reports"
+    }
+  }
+}

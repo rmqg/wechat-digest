@@ -157,6 +157,65 @@ def _encrypted_fixture(path: Path) -> None:
     _save_json(path / "fixture-integrity.json", {"warning": TEST_HMAC, "hmac_sha256_file": hashlib.sha256(encrypted.read_bytes()).hexdigest(), "tamper_test_byte_offset": 128})
 
 
+def generate_qq_demo(output: Path) -> None:
+    """Write fictional QQ renderer fixtures without touching QQ or a model."""
+    output.mkdir(parents=True, exist_ok=True)
+    assets = output / "assets"
+    assets.mkdir(mode=0o755, exist_ok=True)
+    image_path = assets / "garden-plan.png"
+    _image(image_path)
+    image_name = hashlib.sha256(image_path.read_bytes()).hexdigest() + ".png"
+    asset_path = assets / image_name
+    if asset_path != image_path:
+        image_path.replace(asset_path)
+    start = 1793145600
+    end = start + 86400
+    group_id, self_id = 1000000001, "1000000002"
+    messages = [
+        {"message_uid": "QQ-SYN-001", "author": "林小满", "author_id": "1000000101",
+         "timestamp": start + 3600, "type": "text", "text": "虚构测试记录：周六上午整理社区花园工具。"},
+        {"message_uid": "QQ-SYN-002", "author": "周禾", "author_id": "1000000102",
+         "timestamp": start + 3900, "type": "image", "text": "虚构的示意图已附。",
+         "image_sources": [f"assets/{image_name}"]},
+        {"message_uid": "QQ-SYN-003", "author": "陈星", "author_id": "1000000103",
+         "timestamp": start + 4200, "type": "text", "text": "我来准备标签，以上均为离线虚构内容。"},
+    ]
+    common = {"chat_username": f"qq:{group_id}", "chat_display": "合成演示群（虚构）",
+              "day": "2026-10-28", "range_text": "2026.10.27 17:00 — 2026.10.28 17:00",
+              "generated_at": "离线合成示例", "stats": {"messages": 3, "members": 3, "images": 1},
+              "rhythm_buckets": daily_report.build_rhythm_buckets(
+                  (message["timestamp"] for message in messages), start, end),
+              "leaders": {"peak": {"name": "18:00", "count": 3}}}
+    brief = {**common, "title_prefix": "QQ群日报", "edition": "brief",
+             "one_line": "离线合成内容：群友安排了一次社区花园准备活动。",
+             "topics": [{"topic": "周末准备", "summary": "群友计划整理花园工具并准备标签。",
+                         "details": ["集合时间为周六上午。"],
+                         "references": [{key: value for key, value in messages[0].items()}]}],
+             "quotes": [], "active_rank": []}
+    review = {**common, "title_prefix": "QQ群总结", "edition": "review",
+              "one_line": "离线合成内容：活动准备分工已初步明确。",
+              "topics": [{"topic": "时间与分工", "summary": "周六上午整理工具，陈星负责标签。",
+                          "details": ["计划为虚构内容，不是实测聊天。"],
+                          "references": [{key: value for key, value in message.items()} for message in messages]},
+                         {"topic": "图示", "summary": "示意图为本地程序自制合成图。",
+                          "details": [], "references": [dict(messages[1])]}],
+              "quotes": [{"speaker": "陈星", "text": "我来准备标签。"}],
+              "active_rank": [{"name": "林小满", "count": 1}, {"name": "周禾", "count": 1}, {"name": "陈星", "count": 1}]}
+    for edition, report in (("brief", brief), ("review", review)):
+        _save_json(output / f"qq-{edition}.json", report)
+        (output / f"qq-{edition}.html").write_text(daily_report.render_html(report), encoding="utf-8")
+        daily_report.render_png_pillow(report, output / f"qq-{edition}.png")
+    _save_json(output / "qq-sources.json", {
+        "synthetic_example": True, "group_id": group_id, "group_name": "合成演示群（虚构）",
+        "self_id": self_id, "window": {"start_unix": start, "end_unix_exclusive": end},
+        "messages": messages})
+    index = ("<!doctype html><html lang='zh-CN'><meta charset='utf-8'><title>虚构 QQ 离线样本</title>"
+             "<body><h1>虚构 QQ 离线样本</h1><p>仅演示渲染，不是 AI 实测、QQ 导出或真实群内容。</p>"
+             "<p><a href='qq-brief.html'>简报 HTML</a> · <a href='qq-brief.png'>简报 PNG</a></p>"
+             "<p><a href='qq-review.html'>回顾 HTML</a> · <a href='qq-review.png'>回顾 PNG</a></p></body></html>\n")
+    (output / "index.html").write_text(index, encoding="utf-8")
+
+
 def generate(output: Path) -> None:
     output.mkdir(parents=True, exist_ok=True)
     brief, review, snapshot = _records()
@@ -178,10 +237,15 @@ def generate(output: Path) -> None:
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--output", type=Path, default=DEFAULT_OUTPUT, help="destination directory (default: examples/synthetic)")
+    parser.add_argument("--output", type=Path, help="destination directory (default: examples/synthetic or examples/qq-synthetic with --qq)")
+    parser.add_argument("--qq", action="store_true", help="generate fictional QQ renderer fixtures only; no network or model")
     args = parser.parse_args()
-    generate(args.output.resolve())
-    print(f"Generated fictional demo artifacts in {args.output.resolve()}")
+    output = args.output.resolve() if args.output else (ROOT / "examples" / ("qq-synthetic" if args.qq else "synthetic")).resolve()
+    if args.qq:
+        generate_qq_demo(output)
+    else:
+        generate(output)
+    print(f"Generated {'fictional QQ' if args.qq else 'fictional'} demo artifacts in {output}")
 
 
 if __name__ == "__main__":

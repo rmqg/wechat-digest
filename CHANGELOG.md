@@ -1,5 +1,18 @@
 # Changelog
 
+## 1.1.0
+
+- Add configurable QQ OneBot v11/NapCat history collection, image/OCR/web context, independently generated brief/review reports, real message-receipt verification and a deterministic offline fictional QQ demo.
+- Keep per-group messages, tasks, reports and receipt databases independent; collect while model work is running, honor a seven-day request bound, prioritize fresh requests, and stop cancelled, permanent-error or ambiguous-send jobs safely.
+- Recognize native QQ mentions or text containing both `@` and a configured bot name; interpret intent separately, ignore bot-authored notifications and avoid replaying historical triggers on activation.
+- Add a standard-library report website with per-group scrypt credentials, root-to-account-group routing, cross-group/resource denial, safe static paths, optional private Unix sockets, and restricted single-group SSH publishing with minimal metadata.
+- Reuse a responsive web reading layer, expose verified source images within their own group, preserve delivered PNG fingerprints, and provide group-home/brief-review navigation without mixing website credentials.
+- Prevent empty generation and cached-empty delivery; keep confirmed daily state stable during receipt rechecks and eliminate false overdue/recovery Bark alarms without hiding real failures.
+- Require a single locked QQ service instance; status reads do not reset in-flight state, and recovery marks interrupted sends unknown only under the serving process lock.
+- Support QQ `title_prefix` in the independent renderer and complete JSON inside an unclosed Markdown fence while still rejecting truncation, trailing prose and incomplete streams.
+- Add OCR-summary and provider-fallback support, pin `websockets==16.0`, and provide an explicitly selected, checksum-verified Linux x86-64/Python 3.12 OCR image layer with an actual OCR CI smoke check.
+- Retain original third-party notices; publish only synthetic examples, not production accounts, passwords, raw conversations, browser sessions or private operational history.
+
 ## Unreleased
 
 - Use the platform-neutral project name **WeChat Digest** and repository `rmqg/wechat-digest`; update clone instructions and repository links.

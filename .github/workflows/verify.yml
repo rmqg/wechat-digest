@@ -38,3 +38,11 @@ jobs:
         run: docker compose config --quiet
       - name: Installer syntax and dry-run only
         run: sh -n scripts/install-openwrt.sh && sh scripts/install-openwrt.sh --dry-run
+      - name: Synthetic QQ rendering
+        run: python scripts/generate-demo.py --qq --output "$RUNNER_TEMP/qq-demo"
+      - name: Build isolated runtime image and exercise QQ CLI
+        if: matrix.python == '3.12'
+        run: |
+          docker build --build-arg WITH_OCR=1 -t wechat-digest-runtime:release-check .
+          docker run --rm --network none --read-only --cap-drop ALL wechat-digest-runtime:release-check /tool/qq_service.py --help
+          docker run --rm --network none --read-only --cap-drop ALL wechat-digest-runtime:release-check -c "from ocr_images import _create_ocr, _recognize; from PIL import Image,ImageDraw,ImageFont; import io; image=Image.new('RGB',(500,130),'white'); ImageDraw.Draw(image).text((20,20),'123456',fill='black',font=ImageFont.truetype('/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc',64)); data=io.BytesIO(); image.save(data,format='PNG'); text,lines,confidence=_recognize(data.getvalue(),_create_ocr()); assert '123456' in text.replace(' ',''); print('real OCR digits verified')"

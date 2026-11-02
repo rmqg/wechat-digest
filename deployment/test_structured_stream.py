@@ -21,6 +21,10 @@ class CompletionStreamTests(unittest.TestCase):
         result = read_completion(EventResponse(data))
         self.assertEqual(parse_object(result['choices'][0]['message']['content']), {'description': '带有“引号”和换行\n的图', 'facts': ['一条事实']})
 
+    def test_complete_json_with_unclosed_markdown_fence_is_accepted(self):
+        self.assertEqual(parse_object('```json\n{"ok":true}'), {"ok": True})
+        self.assertEqual(parse_object('```\n{"ok":true}\n```'), {"ok": True})
+
     def test_parseable_json_without_completion_signal_is_not_success(self):
         with self.assertRaises(CompletionReadError) as raised:
             read_completion(EventResponse(event('{"description":"partial"}') + b'data: [DONE]\n\n'))

@@ -1,0 +1,14 @@
+{
+  "onebot_url": "ws://127.0.0.1:3001",
+  "onebot_token_file": "./onebot.token",
+  "group_id": 1000000001,
+  "group_name": "合成演示群（请替换）",
+  "expected_self_id": "1000000002",
+  "bot_names": ["演示机器人"],
+  "runtime_dir": "./runtime",
+  "reports_dir": "./reports",
+  "model_config": "./model.json",
+  "vision_fallback_config": null,
+  "enabled_from": 2051222400,
+  "daily_hour": 5
+}

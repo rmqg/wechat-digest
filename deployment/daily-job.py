@@ -85,6 +85,12 @@ def sha256(path: Path) -> str:
     return h.hexdigest()
 
 
+def _has_positive_message_count(metadata: dict) -> bool:
+    stats = metadata.get("stats")
+    count = stats.get("messages") if isinstance(stats, dict) else None
+    return isinstance(count, int) and not isinstance(count, bool) and count > 0
+
+
 def local_report_path(value: str) -> Path:
     candidate = Path(value)
     if str(candidate).startswith("/reports/"):
@@ -120,9 +126,10 @@ def _recover_daily_bundle(report_day: str, start_epoch: int, end_epoch: int,
                 or not json_path.is_relative_to(reports)):
             raise ValueError("recovered edition paths must stay within runtime/reports")
         metadata = json.loads(json_path.read_text(encoding="utf-8"))
-        if (metadata.get("edition") != edition or metadata.get("chat_username") != GROUP_ID
-                or metadata.get("window") != expected_window or metadata.get("request") is not None):
-            raise ValueError("recovered edition metadata does not match target and time window")
+        if (not _has_positive_message_count(metadata) or metadata.get("edition") != edition
+                or metadata.get("chat_username") != GROUP_ID or metadata.get("window") != expected_window
+                or metadata.get("request") is not None):
+            raise ValueError("recovered edition must contain messages and match target and time window")
         digest = sha256(png)
         item = {"status": "prepared", "html": str(html_path), "png": str(png),
                 "json": str(json_path), "png_sha256": digest}
@@ -236,10 +243,11 @@ def run_tick(now: datetime, *, force: bool = False, prepare_only: bool = False) 
                         or not png.is_relative_to(reports) or png.suffix.lower() != ".png"
                         or not json_path.is_relative_to(reports)):
                     raise ValueError("generated edition paths must stay within runtime/reports")
-                metadata = json.loads(json_path.read_text(encoding="utf-8"))
-                if (metadata.get("edition") != edition or metadata.get("chat_username") != GROUP_ID
-                        or metadata.get("window") != expected_window or metadata.get("request") is not None):
-                    raise ValueError("generated edition does not match target, edition, and time window")
+                metadata = json.loads(json_path.read_text(encoding='utf-8'))
+                if (not _has_positive_message_count(metadata) or metadata.get("edition") != edition
+                        or metadata.get("chat_username") != GROUP_ID or metadata.get("window") != expected_window
+                        or metadata.get("request") is not None):
+                    raise ValueError("prepared edition must contain messages and match target, edition, and time window")
                 if sha256(png) != item["png_sha256"]:
                     raise ValueError("prepared edition fingerprint changed")
         except Exception as exc:
@@ -273,10 +281,11 @@ def run_tick(now: datetime, *, force: bool = False, prepare_only: bool = False) 
                         or not png.is_relative_to(reports) or png.suffix.lower() != ".png"
                         or not json_path.is_relative_to(reports)):
                     raise ValueError("generator returned edition paths outside runtime/reports")
-                metadata = json.loads(json_path.read_text(encoding="utf-8"))
-                if (metadata.get("edition") != edition or metadata.get("chat_username") != GROUP_ID
-                        or metadata.get("window") != expected_window or metadata.get("request") is not None):
-                    raise ValueError("generated edition does not match target, edition, and time window")
+                metadata = json.loads(json_path.read_text(encoding='utf-8'))
+                if (not _has_positive_message_count(metadata) or metadata.get("edition") != edition
+                        or metadata.get("chat_username") != GROUP_ID or metadata.get("window") != expected_window
+                        or metadata.get("request") is not None):
+                    raise ValueError("generated edition must contain messages and match target, edition, and time window")
                 prepared[edition] = {"status": "prepared", "html": str(html_path), "png": str(png),
                                      "json": str(json_path), "png_sha256": sha256(png)}
             current.update(status="prepared", editions=prepared, window=expected_window, updated_at=int(time.time()))
@@ -308,7 +317,7 @@ def run_tick(now: datetime, *, force: bool = False, prepare_only: bool = False) 
                 raise ValueError(f"invalid persisted {edition} receipt")
             item.update(status="sent", png_sha256=receipt["png_sha256"], server_id=str(receipt["server_id"]),
                         sent_at=receipt["sent_at"], confirmation=receipt.get("confirmation"))
-            current.update(status="prepared", updated_at=int(time.time()))
+            current.update(status='sent' if all(editions[key].get('status') == 'sent' for key in ('brief', 'review')) else 'prepared', updated_at=int(time.time()))
             write_state(current)
         elif item.get("status") == "sent":
             item.update(status="unknown", error="sent edition receipt is missing; automatic retry prohibited")
@@ -357,7 +366,7 @@ def run_tick(now: datetime, *, force: bool = False, prepare_only: bool = False) 
             os.chmod(temporary, 0o600)
             temporary.replace(receipt_path)
             item.update(status="sent", server_id=receipt["server_id"], sent_at=sent_at, confirmation=delivered)
-            current.update(status="prepared", updated_at=int(time.time()))
+            current.update(status='sent' if all(editions[key].get('status') == 'sent' for key in ('brief', 'review')) else 'prepared', updated_at=int(time.time()))
             current.pop("error", None)
             write_state(current)
         elif delivered.get("status") == "failed" and delivered.get("sent") is False and delivered.get("before_submit") is True:

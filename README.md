@@ -11,6 +11,7 @@
 | 先看报告、引用卡片和完整图片效果 | [合成样本](examples/README.md) | 不需要微信、模型或网络 |
 | 对自己的库做只读解密/导出 | [数据库手册](docs/DATABASE.md) | 需要自己的库与已验证密钥；提取密钥另需授权进程访问 |
 | 在 Linux/iStoreOS 上持续生成总结 | [部署手册](docs/DEPLOYMENT.md) | 需要本人登录客户端、Docker、模型配置 |
+| QQ 群总结（OneBot/NapCat） | [QQ 接入手册](docs/QQ.md) | 需要自管 OneBot v11、独立配置/数据与模型 |
 | 定时/群内 @ 生成并发送 | [运行维护](docs/OPERATIONS.md) | 先完成前述配置；发送是显式副作用 |
 | 远端网站展示、NAS 保留原图 | [配置参考](docs/CONFIGURATION.md)与[运行维护](docs/OPERATIONS.md) | 需要自己的 SSH/网站认证和图片回源入口 |
 | 修改源码或验证发行包 | [开发与验证](docs/DEVELOPMENT.md) | 合成样本与大部分测试可离线运行 |
@@ -24,10 +25,13 @@
 - **HTML 与 PNG**：两者均有中文字体、十分钟折线与时间刻度、正文汉字数、短日期峰值；HTML 另有真实头像、可展开来源卡片、引用灰框及可打开原图的缩略图。PNG 是独立排版的静态摘要，不包含 HTML 的交互来源卡片。
 - **定时和自定**：每日窗口与群内 @ 请求分开处理，默认最近 24 小时，显式时长按请求解释。两版分别记录发送回执；未知送达状态不盲目重试。
 - **安全网页**：静态清单只发布必要文件，原始源快照/密钥/模型配置不上传；图片同域访问，可由远端反代回 NAS loopback 图源，保留原网站账号认证。
+- **独立 Bark 投递监督**：只读日报状态；只有简报与回顾各自确认 sent 后才报告恢复，不改回执、不自动重发。见 [运行维护](docs/OPERATIONS.md)。
+- **独立 QQ 服务**：OneBot/NapCat 数据、服务状态、任务与报告独立存储；含标准库报告网站与 socket 部署说明。QQ 服务不是微信数据处理入口，需单独授权、凭据和访问控制。详见 [QQ 接入手册](docs/QQ.md)。
 
 **不把未验证功能写成支持保证**：公开数据读取格式与客户端运行时捕获是两件事；Linux 客户端版本、ptrace/GDB 权限、macOS 调试保护及 Windows 权限必须分别确认。企业微信与所有未来客户端版本不在本项目通用兼容性承诺内。详见 [兼容性与捕获边界](docs/DATABASE.md)。
 
 本公开工程不包含此前私有参考树中没有明确再分发许可的通用 Agent 控制台/长期记忆 Web 应用。其运行必需的数据基础与报告渲染已独立实现，而不是把无许可源码改一个 MIT 文件再上传。数据库提取、解密到本项目总结/发布链路的源码均在本仓库中；第三方镜像与客户端仍遵守各自许可。
+
 
 ## 1. 离线看完整样本
 
@@ -45,6 +49,10 @@ python scripts/generate-demo.py --output /tmp/wechat-digest-demo
 生成目录包含虚构参与者、消息、回复/转发 XML、自制插图、简报/回顾 HTML/PNG 和认证加密 SQLite 测试库。直接打开生成的 `index.html` 或 PNG 查看。所有样本均从零构造，不是对真实聊天简单替换姓名。
 
 `fixture-key.json` 的密钥是 **PUBLIC TEST-ONLY**，任何人都能解开样本；不能拿它保护实际数据。该演示验证渲染和解密，不是一次真实 AI 总结效果或微信进程捕获的证明。实际解密与篡改检查命令见 [样本说明](examples/README.md)和[数据库手册](docs/DATABASE.md)。
+
+## QQ 群总结
+
+QQ 接入使用独立的 OneBot v11/NapCat 服务配置、令牌、运行状态、模型配置、报告目录和网站认证，不复用微信 runtime 或 MSC 数据。先阅读 [QQ 接入与运行手册](docs/QQ.md)，从最近 24 小时的无发送试跑开始。离线虚构样本可由 `python3 scripts/generate-demo.py --qq --output /tmp/qq-digest-demo` 生成，不调用模型或真实 QQ。
 
 ## 2. 新机器部署顺序
 
@@ -113,7 +121,7 @@ python scripts/generate-demo.py --output /tmp/wechat-digest-demo
 ## 目录地图
 
 ```text
-deployment/                 摘要、图片/OCR、调度、发送、网站、图源及安全运行器
+deployment/                 摘要、图片/OCR、调度、QQ OneBot 服务及网站工具
 memory/                     独立解密、WAL、消息与媒体数据基础和 CLI
 agent_console/daily_report.py  独立 HTML/PNG 渲染器（不是通用控制台）
 tools/wcdb-key-tool/         保留 MIT 许可的三平台密钥工具完整源码
@@ -124,7 +132,7 @@ docs/                       分主题的详细手册
 third_party/                第三方许可与来源记录
 ```
 
-运行目录是 `runtime/`，**不在 Git 或 Docker build context 内**。其中包括登录会话、原始/解密数据、密钥、模型配置、媒体缓存、报告、回执和锁；不要以为 `.gitignore` 可以代替文件权限、加密备份或日志脱敏。
+微信部署运行目录为 `runtime/`，**不在 Git 或 Docker build context 内**；QQ 服务单独使用 `qq-service` 配置中指定的 `runtime_dir` 和 `reports_dir`，与微信运行目录、MSC 网站内容均分离。相关目录包括登录会话、原始/解密数据、密钥、模型配置、媒体缓存、报告、回执和锁；不要以为 `.gitignore` 可以代替文件权限、加密备份或日志脱敏。
 
 ## 完整手册
 
@@ -138,6 +146,7 @@ third_party/                第三方许可与来源记录
 - [安全](docs/SECURITY.md)：授权、密钥、容器权限、网站/图片认证与公开范围。
 - [开发和校验](docs/DEVELOPMENT.md)、[文档校验](docs/VALIDATION.md)、[贡献规范](CONTRIBUTING.md)。
 - [许可与第三方](THIRD_PARTY_NOTICES.md)、[版本记录](CHANGELOG.md)。
+- [QQ 接入与运行](docs/QQ.md)：NapCat/OneBot v11、独立隔离、24 小时试跑、提及/时间窗、socket 站点及安全排障。
 
 ## 报告问题前
 

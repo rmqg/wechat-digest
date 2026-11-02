@@ -99,6 +99,14 @@ class RhythmBucketTests(unittest.TestCase):
         self.assertNotIn('群友金句', no_quotes)
         self.assertIn('活跃前20名', no_quotes)
 
+    def test_qq_title_prefix_is_rendered_for_both_editions(self):
+        report = {"title_prefix": "QQ群日报", "report_kind": "ignored", "edition": "brief",
+                  "chat_display": "虚构测试群", "topics": [], "stats": {}, "window": {}}
+        with patch.object(daily_report, 'rounded_webfont_css', return_value=''):
+            html = daily_report.render_html(report)
+        self.assertIn("QQ群日报 · 简报", html)
+        self.assertIn("虚构测试群", html)
+
     def test_repeated_source_avatars_prefer_shared_assets_over_inline_payloads(self):
         import base64
         import io

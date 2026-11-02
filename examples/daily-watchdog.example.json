@@ -1,0 +1,10 @@
+{
+  "bark_url": "https://bark.example.invalid/REPLACE_WITH_PRIVATE_DEVICE_PATH",
+  "group": "WeChat-Daily",
+  "fail_level": "active",
+  "recovery_level": "passive",
+  "daily_hour": 5,
+  "daily_minute": 0,
+  "timezone": "Asia/Shanghai",
+  "overdue_minutes": 60
+}

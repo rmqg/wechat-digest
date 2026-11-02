@@ -9,8 +9,11 @@ def parse_object(content):
         raise ValueError("structured response must be text")
     text = content.strip()
     lines = text.splitlines()
-    if len(lines) >= 3 and lines[0].lower() in {"```json", "```"} and lines[-1] == "```":
-        text = "\n".join(lines[1:-1])
+    if lines and lines[0].lower() in {"```json", "```"}:
+        lines = lines[1:]
+        if lines and lines[-1] == "```":
+            lines = lines[:-1]
+        text = "\n".join(lines)
     value = json.loads(text)
     if not isinstance(value, dict):
         raise ValueError("structured response must be an object")

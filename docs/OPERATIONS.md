@@ -48,6 +48,28 @@ cd /opt/wechat-digest
 
 将输出与 `project.json` 中明确配置的群组 ID/name 人工比对，不按列表顺序选择。成功时 stdout 最后一行是 JSON 结果，包含 brief/review 文件；非零退出或 `images_pending` 不是完整成功，应先处理图片/错误。按需触发由 `wechat-summary-commands` 服务接收；不要手工伪造请求 ID，`--request-id` 仅用于服务生成的 64 位小写 SHA-256 ID，并要求明确 start/end 且 start < end。
 
+## Bark 日报投递监督
+
+`deployment/daily-watchdog.py` 是只读监督器：它不生成、修改或发送报告，只读取 `runtime/digest/delivery-state.json`，在失败/未知/超时未完成时可发送 Bark 提醒。恢复通知必须看到当天 `editions.brief.status` 与 `editions.review.status` 均为 `sent`；单版成功、整体状态中的中间 `sent` 标记都不构成日报完成，避免误报恢复。
+
+从已有 Bark 接收端配置初始化独立配置，再由编辑器确认提醒分组、级别及项目时区/日报时刻：
+
+```sh
+cd /opt/wechat-digest
+umask 077
+/usr/bin/python3 deployment/daily-watchdog.py --init-config \\
+  --source-config runtime/wechat-watchdog.json --config runtime/daily-watchdog.json
+/usr/bin/python3 deployment/daily-watchdog.py --check-config --config runtime/daily-watchdog.json
+```
+
+`--init-config` 不覆盖既有文件；配置也可从无秘密模板 [`examples/daily-watchdog.example.json`](../examples/daily-watchdog.example.json) 创建。限制配置 `0600`，Bark URL 中若含私有设备路径须保密。配置完成后由现有 cron 每分钟单独调用一次：
+
+```cron
+* * * * * cd /opt/wechat-digest && /usr/bin/python3 deployment/daily-watchdog.py --tick >> runtime/daily-watchdog.log 2>&1
+```
+
+监控状态与投递状态分别存储；它不会删改收据，也不会自动重试未知发送。检查状态不可读时先修复存储与权限，不要因此清空日报防重状态。
+
 ## brief/review、重复发送与状态恢复
 
 每日生成有 brief 与 review 两个 edition。调度器用 `runtime/digest/delivery-state.json`、文件锁及 `sent-receipts/` 收据持久化状态。运行时同一时刻只允许一个 tick 持有锁；输出 `running` 表示另一个 tick 正在执行，不应再并行启动。

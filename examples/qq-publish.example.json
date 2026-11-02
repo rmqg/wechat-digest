@@ -1,0 +1,10 @@
+{
+  "group_id": 1000000001,
+  "reports_dir": "./reports",
+  "state_dir": "./publish-state",
+  "host": "qq-reports.example.invalid",
+  "user": "qq_demo_account",
+  "port": 22,
+  "identity_file": "./ssh/qq-demo-ed25519",
+  "known_hosts": "./ssh/known_hosts"
+}

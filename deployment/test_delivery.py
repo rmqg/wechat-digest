@@ -50,7 +50,7 @@ class DeliveryStateTests(unittest.TestCase):
             html.write_text("<html>" + edition + "</html>", encoding="utf-8")
             metadata = base.with_suffix(".json")
             metadata.write_text(json.dumps({"edition": edition, "chat_username": TEST_GROUP_ID,
-                "window": {"start_unix": start, "end_unix_exclusive": end}}), encoding="utf-8")
+                "stats": {"messages": 1}, "window": {"start_unix": start, "end_unix_exclusive": end}}), encoding="utf-8")
             fingerprint = hashlib.sha256(png.read_bytes()).hexdigest()
             generated["editions"][edition] = {"html": str(html), "png": str(png), "json": str(metadata)}
             prepared[edition] = {"status": "prepared", "html": str(html), "png": str(png), "json": str(metadata),
@@ -146,6 +146,28 @@ class DeliveryStateTests(unittest.TestCase):
             self.assertEqual(result["status"], "prepared")
             self.assertEqual(set(result["editions"]), {"brief", "review"})
             self.assertEqual(set(json.loads(state_path.read_text())["editions"]), {"brief", "review"})
+    def test_empty_generation_is_rejected_before_any_send(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            state_path = root / "state.json"
+            now = datetime(2026, 3, 4, 5, 0, tzinfo=daily.TZ)
+            _, start, end = daily.day_window(now)
+            generated, _ = self.bundle(root, start, end)
+            for item in generated["editions"].values():
+                metadata = Path(item["json"])
+                record = json.loads(metadata.read_text())
+                record["stats"]["messages"] = 0
+                metadata.write_text(json.dumps(record))
+            calls = []
+            def generator(command, **kwargs):
+                calls.append(command)
+                return subprocess.CompletedProcess(command, 0, json.dumps(generated), "")
+            with (patch.object(daily, "STATE", state_path), patch.object(daily, "ROOT", root),
+                  patch.object(daily.subprocess, "run", side_effect=generator)):
+                result = daily.run_tick(now)
+            self.assertEqual(result["status"], "failed")
+            self.assertEqual(result["stage"], "generation-output")
+            self.assertEqual(len(calls), 1)
     def test_review_pre_submit_failure_resumes_only_review(self):
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp)

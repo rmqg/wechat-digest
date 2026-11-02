@@ -290,7 +290,8 @@ def rank_rows_html(report):
 def render_html(report):
     timezone = _report_timezone(report)
     edition = 'brief' if report.get('edition') == 'brief' else 'review'
-    title = str(report.get('report_kind') or '群聊日报') + (' · 简报' if edition == 'brief' else ' · 回顾')
+    base_title = str(report.get('report_kind') or '群聊日报')
+    title = str(report.get('title_prefix') or base_title) + (' · 简报' if edition == 'brief' else ' · 回顾')
     chat = report.get('chat_display') or report.get('chat_username') or '聊天日报'
     topics = report.get('topics') or []
     avatars = report.get('avatars') or {}
@@ -387,7 +388,7 @@ def render_png_pillow(report, output_path):
     heading_font = ImageFont.truetype(str(font_file), 25)
     small = ImageFont.truetype(str(font_file), 16)
     width, margin = 1100, 64
-    title = str(report.get('report_kind') or '群聊日报') + (' · 简报' if report.get('edition') == 'brief' else ' · 回顾')
+    title = str(report.get('title_prefix') or report.get('report_kind') or '群聊日报') + (' · 简报' if report.get('edition') == 'brief' else ' · 回顾')
     topics = report.get('topics') or []
     stats = report.get('stats') or {}
     stat_labels = {'messages': '消息总量', 'total_messages': '消息总量', 'members': '活跃成员', 'active_members': '活跃成员', 'groups': '话题数量', 'images': '图片数量'}
