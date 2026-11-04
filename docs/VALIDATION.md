@@ -116,5 +116,5 @@ gitleaks git . --redact --no-banner
 
 - The public workflow now initializes the tokenizer cache in a step environment, exports its path through `GITHUB_ENV`, and uses it from later steps without job-level `runner` context. Official `actionlint` v1.7.12 completed with exit 0; its independently downloaded binary matched the official release metadata SHA-256.
 - The extracted prewarm step completed with exit 0; a separate fresh Python process inherited the exported cache path and deterministically counted the sample as 4 tokens. Public version-template contract checks also matched 1.2.1.
-- GitHub Actions for the v1.2.1 commit/tag are recorded only after their actual runs terminate; these local workflow/configuration checks are not a substitute for CI.
+- GitHub Actions run `41845207440` for source commit `f936074f57a573ea0f3bd48057ea4d107eb90e4e` completed successfully: Python 3.11 and 3.12 matrix jobs passed, including offline tests, documentation, redacted boundary audit, synthetic rendering, Compose/installer checks, and the Python 3.12 isolated runtime/OCR check. Release-tag CI is checked separately after publication; this is not inferred from local checks.
 
