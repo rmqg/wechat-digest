@@ -110,5 +110,5 @@ gitleaks git . --redact --no-banner
 - The authorized private site entry and notification usage example were verified in the intended group, including HTTPS response and content/account checks. This public record intentionally excludes the URL, user-info, account, password, group ID and message ID.
 - The successful production task state was `complete`. A separate observation script incorrectly expected `done`; that caused a reporting delay only and was not a production processing or delivery failure.
 - Final source privacy audit with the external private-pattern list reported zero findings. Redacted Gitleaks 8.30.1 directory and full-history scans each reported zero findings. No private patterns, matching values, runtime caches or production artifacts are included in the public tree.
-- CI status is determined from GitHub Actions for the release commit/tag after publication; local checks above are not CI evidence.
+- GitHub Actions for release commit `462949b518b38274c4bbd0db1a502fdadf4de88e`: both observed push runs completed with `failure`; the latest run `41842174840` had zero job records/check-runs, and its log endpoint returned 404. `gh run watch` confirmed the failure terminal state. No CI success is claimed; local checks above are not CI evidence.
 
