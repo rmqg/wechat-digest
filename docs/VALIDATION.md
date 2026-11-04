@@ -110,5 +110,11 @@ gitleaks git . --redact --no-banner
 - The authorized private site entry and notification usage example were verified in the intended group, including HTTPS response and content/account checks. This public record intentionally excludes the URL, user-info, account, password, group ID and message ID.
 - The successful production task state was `complete`. A separate observation script incorrectly expected `done`; that caused a reporting delay only and was not a production processing or delivery failure.
 - Final source privacy audit with the external private-pattern list reported zero findings. Redacted Gitleaks 8.30.1 directory and full-history scans each reported zero findings. No private patterns, matching values, runtime caches or production artifacts are included in the public tree.
-- GitHub Actions for release commit `462949b518b38274c4bbd0db1a502fdadf4de88e`: both observed push runs completed with `failure`; the latest run `41842174840` had zero job records/check-runs, and its log endpoint returned 404. `gh run watch` confirmed the failure terminal state. No CI success is claimed; local checks above are not CI evidence.
+- The two v1.2.0 push workflow runs ended in failure with no job/check-run records; GitHub did not provide logs (404). Root cause was invalid context use: GitHub documents `runner` as unavailable in `jobs.<job_id>.env`, although it is available in step environments. This workflow-scope defect is corrected in v1.2.1; the v1.2.0 tag/assets remain unchanged and v1.2.1 supersedes that release for use.
+
+## 11. 1.2.1 GitHub Actions workflow correction
+
+- The public workflow now initializes the tokenizer cache in a step environment, exports its path through `GITHUB_ENV`, and uses it from later steps without job-level `runner` context. Official `actionlint` v1.7.12 completed with exit 0; its independently downloaded binary matched the official release metadata SHA-256.
+- The extracted prewarm step completed with exit 0; a separate fresh Python process inherited the exported cache path and deterministically counted the sample as 4 tokens. Public version-template contract checks also matched 1.2.1.
+- GitHub Actions for the v1.2.1 commit/tag are recorded only after their actual runs terminate; these local workflow/configuration checks are not a substitute for CI.
 

@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.2.1
+
+- Fix GitHub Actions workflow cache initialization: use `runner.temp` only in a step environment, persist the cache path through `GITHUB_ENV`, and reuse the same offline tokenizer cache in subsequent test steps.
+- Synchronize public runtime/template version references to 1.2.1. No production image, dependency, model or runtime was changed.
+- This corrective release supersedes v1.2.0 for use. The v1.2.0 tag and published assets remain unchanged.
+
 ## 1.2.0
 
 - Rank QQ speakers by accumulated original-text tokens using pinned offline `tiktoken` data; include literal captions, exclude generated media/OCR/AI/web context, and omit tokenizer details from reports.

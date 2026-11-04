@@ -17,7 +17,7 @@ DEFAULTS: dict[str, Any] = {
     "report_prefix": "wechat-digest", "desktop_container": "wechat-digest-desktop",
     "public_url": None, "image_origin_host": None, "daily_hour": 5, "timezone": "Asia/Shanghai",
     "worker_uid": 1000, "worker_gid": 1000,
-    "images": {"runtime": "wechat-digest-runtime:1.2.0", "keyscan": "wechat-digest-runtime:1.2.0",
+    "images": {"runtime": "wechat-digest-runtime:1.2.1", "keyscan": "wechat-digest-runtime:1.2.1",
                "desktop": "ghcr.io/nickrunning/wechat-selkies:0.0.12-minimal"},
 }
 

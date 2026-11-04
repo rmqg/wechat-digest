@@ -10,8 +10,6 @@ permissions:
 jobs:
   source:
     runs-on: ubuntu-latest
-    env:
-      TIKTOKEN_CACHE_DIR: ${{ runner.temp }}/tiktoken-cache
     strategy:
       fail-fast: false
       matrix:
@@ -28,11 +26,12 @@ jobs:
       - name: Prewarm token data for deterministic tests
         env:
           TIKTOKEN_CACHE_DIR: ${{ runner.temp }}/tiktoken-cache
-        run: python -c "import tiktoken; tiktoken.get_encoding('o200k_base')"
+        run: |
+          python -c "import tiktoken; tiktoken.get_encoding('o200k_base')"
+          printf 'TIKTOKEN_CACHE_DIR=%s\n' "$TIKTOKEN_CACHE_DIR" >> "$GITHUB_ENV"
       - name: Offline consumer behavior tests
         env:
           PYTHONPATH: .:deployment:memory:agent_console:deployment/vendor
-          TIKTOKEN_CACHE_DIR: ${{ runner.temp }}/tiktoken-cache
         run: python -m pytest -q
       - name: Documentation, examples and safe CLI help
         run: python scripts/check-docs.py --cli

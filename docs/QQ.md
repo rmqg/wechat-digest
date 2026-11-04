@@ -27,7 +27,7 @@ install -m 600 /dev/null /srv/qq-digest/runtime/onebot.token
 python3 scripts/install-ocr.py --target /srv/qq-digest/ocr-deps --wheel-dir /srv/qq-digest/ocr-wheels
 # 运行 worker 时将 /srv/qq-digest/ocr-deps 加入 PYTHONPATH；已有 wheel 可用 --offline 安装。
 # 或构建包含该 OCR 层的 Linux x86-64 工具镜像：
-docker build --build-arg WITH_OCR=1 -t wechat-digest-runtime:1.2.0 .
+docker build --build-arg WITH_OCR=1 -t wechat-digest-runtime:1.2.1 .
 ```
 
 相对路径以 JSON 配置文件所在目录为基准。服务配置至少应明确 `onebot_url`、`onebot_token_file`、`group_id`、`group_name`、`expected_self_id`、`bot_names`、`runtime_dir`、`reports_dir`、`model_config`、`enabled_from` 和 `daily_hour`。`enabled_from` 是 Unix 秒时间戳，防止启用前的历史消息被当作新触发。模板中的群、账号、密码、URL 和 token 路径均为虚构/占位，必须替换；不得将真实 token 或 API key 放入仓库。
