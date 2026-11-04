@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.2.2
+
+- Fix shared-domain QQ report access in browsers that may reuse cached HTTP Basic credentials: route `/qq/*` to the QQ-specific authenticator before username-based legacy routing, while preserving the existing WeChat root route and per-group authorization boundaries.
+- Return a standards-compliant HTML 401 response with a Basic challenge so browsers can present their native authentication prompt. Safari may require that prompt; automatic login from URL user-info is not guaranteed.
+- Synchronize public runtime/template references to 1.2.2. No production account, credentials, private URL, group identifier or report artifact is included.
+
 ## 1.2.1
 
 - Fix GitHub Actions workflow cache initialization: use `runner.temp` only in a step environment, persist the cache path through `GITHUB_ENV`, and reuse the same offline tokenizer cache in subsequent test steps.

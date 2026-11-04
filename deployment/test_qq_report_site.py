@@ -103,6 +103,28 @@ class QQReportSiteTests(unittest.TestCase):
                 with self.assertRaises(ValueError):
                     site.load_config(config_path)
 
+    def test_auth_challenge_is_renderable_and_head_preserves_headers(self):
+        for path, realm in (("/", "QQ reports"), ("/qq/10001/", "10001")):
+            with self.subTest(path=path):
+                status, headers, body = self._get(path)
+                self.assertEqual(status, 401)
+                self.assertEqual(headers["Content-Type"], "text/html; charset=utf-8")
+                self.assertEqual(headers["WWW-Authenticate"], f'Basic realm="{realm}", charset="UTF-8"')
+                self.assertEqual(int(headers["Content-Length"]), len(body))
+                self.assertTrue(body.startswith(b"<!doctype html>"))
+                self.assertIn(b"<title>", body)
+                self.assertNotIn(b"report text", body)
+                connection = HTTPConnection("127.0.0.1", self.port, timeout=3)
+                try:
+                    connection.request("HEAD", path)
+                    response = connection.getresponse()
+                    self.assertEqual(response.status, 401)
+                    self.assertEqual(response.getheader("Content-Type"), headers["Content-Type"])
+                    self.assertEqual(response.getheader("Content-Length"), headers["Content-Length"])
+                    self.assertEqual(response.read(), b"")
+                finally:
+                    connection.close()
+
     def test_root_auth_redirects_only_to_matching_group(self):
         status, headers, _ = self._get("/", ("user-a", "password-a"))
         self.assertEqual(status, 302)

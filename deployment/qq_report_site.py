@@ -257,10 +257,18 @@ def make_handler(config: dict):
                 self.wfile.write(body)
 
         def _unauthorized(self, realm="QQ reports"):
+            body = (
+                '<!doctype html><html lang="zh-CN"><head><meta charset="utf-8">'
+                '<title>需要登录</title></head><body><h1>需要登录</h1>'
+                '<p>请在浏览器的登录窗口中使用当前群的专用账号。</p></body></html>'
+            ).encode('utf-8')
             self.send_response(401)
             self.send_header("WWW-Authenticate", f'Basic realm="{realm}", charset="UTF-8"')
-            self.send_header("Content-Length", "0")
+            self.send_header("Content-Type", "text/html; charset=utf-8")
+            self.send_header("Content-Length", str(len(body)))
             self.end_headers()
+            if self.command != "HEAD":
+                self.wfile.write(body)
 
         def _credentials(self):
             header = self.headers.get("Authorization", "")

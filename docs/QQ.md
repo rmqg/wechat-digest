@@ -27,7 +27,7 @@ install -m 600 /dev/null /srv/qq-digest/runtime/onebot.token
 python3 scripts/install-ocr.py --target /srv/qq-digest/ocr-deps --wheel-dir /srv/qq-digest/ocr-wheels
 # 运行 worker 时将 /srv/qq-digest/ocr-deps 加入 PYTHONPATH；已有 wheel 可用 --offline 安装。
 # 或构建包含该 OCR 层的 Linux x86-64 工具镜像：
-docker build --build-arg WITH_OCR=1 -t wechat-digest-runtime:1.2.1 .
+docker build --build-arg WITH_OCR=1 -t wechat-digest-runtime:1.2.2 .
 ```
 
 相对路径以 JSON 配置文件所在目录为基准。服务配置至少应明确 `onebot_url`、`onebot_token_file`、`group_id`、`group_name`、`expected_self_id`、`bot_names`、`runtime_dir`、`reports_dir`、`model_config`、`enabled_from` 和 `daily_hour`。`enabled_from` 是 Unix 秒时间戳，防止启用前的历史消息被当作新触发。模板中的群、账号、密码、URL 和 token 路径均为虚构/占位，必须替换；不得将真实 token 或 API key 放入仓库。
@@ -70,18 +70,19 @@ QQ 报告站点是 Python 标准库实现，可选监听本机 loopback 或 Unix
 
 同一群的明文密码需分别生成两种验证器：`qq_report_site.py --hash-password` 生成站点用的 scrypt；Caddy 的 `caddy hash-password` 从标准输入读取密码并生成 bcrypt。二者不能互换。不要使用会把明文放进进程参数的 `--plaintext`，也不要改写现有 MSC 的用户名或哈希。更新后先执行 Caddy `validate` 再平滑 `reload`；只重载本次新建的 QQ 站点进程，不重启共享代理。
 
-浏览器可能缓存现有 MSC 的 HTTP Basic 身份；验证新账号时使用私密窗口或独立浏览器配置。根入口将按已验证用户名跳转到对应群；切换账号不是给一个账户增加其他群权限。
-
-共用域名和 HTTPS 入口时，可在既有 Caddy `basic_auth` 认证后，按认证用户名 `http.auth.user.id` 做群隔离路由，每个账户只反代到自己群的 Unix socket；不要基于未经认证的路径参数挑选群。示意（仅展示 QQ 分流，不是完整站点配置）：
+浏览器可能缓存现有 MSC 的 HTTP Basic 身份。共用域名时，必须先按固定 `/qq/*` 路径将请求交给 QQ 专用认证器，再执行按认证用户名划分的旧站点路由；不能只依赖缓存的 `http.auth.user.id` 选择 QQ/微信后端。此路径优先规则不得移除 QQ 服务自身认证、扩大群权限或改变原有微信根入口。
 
 ```caddyfile
-@qq_demo vars {http.auth.user.id} qq_demo_account
-handle @qq_demo {
-    reverse_proxy unix//config/private/qq-demo.sock
+@qq path /qq/*
+handle @qq {
+    reverse_proxy unix//config/private/qq-site.sock
+}
+handle {
+    # Keep the existing, authenticated WeChat/root routing here.
 }
 ```
 
-实际 Caddy 站点还必须使用运维者已配置的 TLS、`basic_auth` 账户密码哈希、socket 私有挂载和旧 MSC `import`/路由；不要用此示例替换已有认证配置。每群独立账号应在同一认证入口配置，确保未匹配的请求仍走现有 MSC 路由并保留其原认证。QQ 与 MSC 只共用反代入口，绝不共用账号凭据、报告目录、静态资源、SQLite、运行目录或历史数据。
+这是路由顺序示意，不是完整站点配置；沿用现有 TLS、全局认证和群隔离，先用 Caddy `validate` 再按受控流程 reload。QQ 认证器拒绝未授权请求时，401 必须包含 HTML `Content-Type`、正确 `Content-Length` 和保留的 `WWW-Authenticate: Basic ...` challenge；不得把未授权错误变成空文件或绕过认证。Safari 可能复用先前 HTTP Basic 凭据，因此首次访问可出现原生登录框；不能保证 URL user-info 会被每个浏览器自动用于认证。入口只接受对应群的独立凭据，根路径和既有微信用户/路由保持原样。
 
 如启用 `deployment/qq_publish.py`，只为指定群设置独立受限 SSH 发布目标；该发布器仅同步该群已核验的简报/回顾和所需哈希图片 assets，最小化必要元数据，不上传 sources 快照、OneBot/model 配置、token 或其他群文件。远端目录仍应通过上述群账户与 socket 隔离提供。
 
