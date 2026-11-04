@@ -57,6 +57,72 @@ class QQDigestInputTests(unittest.TestCase):
         self.assertNotIn('secret', rendered)
         self.assertNotIn('gchat.qpic.cn', rendered)
         self.assertEqual(value['messages'][0]['image_items'], [{'type': 'image'}])
+    def test_group_rkey_replaces_only_ticket_query_value(self):
+        original = 'https://multimedia.nt.qq.com.cn/path%2Ffile?appid=1407&fileid=ab%2Fcd&rkey=old%2Fkey&x=a%2Bb#frag'
+        self.assertEqual(qq_digest._replace_image_rkey(original, '&rkey=current-group'),
+                         'https://multimedia.nt.qq.com.cn/path%2Ffile?appid=1407&fileid=ab%2Fcd&rkey=current-group&x=a%2Bb#frag')
+        self.assertIsNone(qq_digest._replace_image_rkey(original.replace('#frag', '&rkey=duplicate#frag'), '&rkey=current'))
+
+    def test_image_http_400_retries_same_url_once(self):
+        import io
+        import urllib.error
+        original = 'https://multimedia.nt.qq.com.cn/path?fileid=same&rkey=expired&other=a%2Bb'
+        calls = []
+
+        def fetch(url, *, avatar=False):
+            calls.append(url)
+            if len(calls) == 1:
+                raise urllib.error.HTTPError(url, 400, 'expired', {}, io.BytesIO(b''))
+            return b'image bytes'
+
+        with patch.object(qq_digest, '_fetch_image_once', side_effect=fetch):
+            self.assertEqual(qq_digest._fetch_image(original, group_rkey='&rkey=fresh-group'), b'image bytes')
+        self.assertEqual(calls, [original,
+            'https://multimedia.nt.qq.com.cn/path?fileid=same&rkey=fresh-group&other=a%2Bb'])
+
+    def test_non_400_image_error_is_not_retried(self):
+        import io
+        import urllib.error
+        error = urllib.error.HTTPError('https://multimedia.nt.qq.com.cn/path', 403, 'forbidden', {}, io.BytesIO(b''))
+        with patch.object(qq_digest, '_fetch_image_once', side_effect=error) as fetch:
+            with self.assertRaisesRegex(ValueError, 'HTTP 403'):
+                qq_digest._fetch_image('https://multimedia.nt.qq.com.cn/path?rkey=old',
+                                       group_rkey='&rkey=fresh-group')
+        self.assertEqual(fetch.call_count, 1)
+
+    def test_group_rkey_file_requires_private_matching_group_and_type(self):
+        with tempfile.TemporaryDirectory() as root:
+            runtime = Path(root)
+            path = runtime / 'qq-digest' / 'rkey.json'
+            path.parent.mkdir(mode=0o700)
+            path.write_text(json.dumps({'group_id': 42, 'type': 'group', 'rkey': '&rkey=fresh'}))
+            path.chmod(0o600)
+            self.assertEqual(qq_digest._load_group_rkey_file(path, runtime, 42), '&rkey=fresh')
+            path.write_text(json.dumps({'group_id': 43, 'type': 'group', 'rkey': '&rkey=fresh'}))
+            with self.assertRaisesRegex(ValueError, 'does not match'):
+                qq_digest._load_group_rkey_file(path, runtime, 42)
+
+    def test_image_caption_literal_placeholder_counts_as_original_qq_text(self):
+        import report_metrics
+
+        class FakeEncoding:
+            def encode_ordinary(self, value):
+                return list(value)
+
+        message = {'message_uid': 'qq:42:1', 'reference': 'Q1', 'timestamp': 100,
+                   'author_id': '12345', 'author': 'member', 'type': 'image', 'text': '[图片]',
+                   'image_items': []}
+        summary = {'one_line': 'summary', 'topics': [], 'quotes': []}
+        with patch.object(report_metrics, '_o200k_encoding', return_value=FakeEncoding()):
+            expected = report_metrics.body_token_count('[图片]')
+            report = qq_digest._build_report([message], {'group_name': 'group'}, 42,
+                                             0, 200, summary, 'brief', {})
+        self.assertEqual(report['participants'][0]['tokens'], expected)
+        self.assertEqual(report['active_rank'][0]['tokens'], expected)
+        self.assertEqual(report['leaders']['talk']['tokens'], expected)
+        self.assertEqual(report['stats']['images'], 1)
+        self.assertEqual(report['media_understanding']['images']['total'], 1)
+
     def test_group_avatar_uses_group_avatar_endpoint(self):
         with tempfile.TemporaryDirectory() as root:
             with patch.object(qq_digest, '_fetch_image', return_value=b'image') as fetch:

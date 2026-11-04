@@ -13,9 +13,9 @@ from pathlib import Path
 from zoneinfo import ZoneInfo
 
 try:
-    from .report_metrics import body_chinese_count, peak_time_text
+    from .report_metrics import body_chinese_count, body_token_count, message_body_token_count, peak_time_text
 except ImportError:  # direct script execution
-    from report_metrics import body_chinese_count, peak_time_text
+    from report_metrics import body_chinese_count, body_token_count, message_body_token_count, peak_time_text
 
 DISPLAY_TZ = ZoneInfo('Asia/Shanghai')
 
@@ -270,10 +270,14 @@ def _topic_refs(topic):
 def ranked_participants(report):
     rows = report.get('participants') or report.get('active_rank') or []
     def order(row):
-        count = row.get('count', row.get('messages', 0)) or 0
+        value = row.get('tokens', row.get('count', row.get('messages', 0))) or 0
         identity = row.get('username') or row.get('id') or row.get('participant_id') or row.get('account_id') or row.get('user_id') or row.get('author_id') or row.get('speaker_id') or ''
-        return -int(count), str(identity)
+        return -int(value), str(identity)
     return sorted(rows, key=order)[:20]
+
+
+def rank_value(row):
+    return int(row.get('tokens', row.get('count', row.get('messages', 0))) or 0), ('tokens' if 'tokens' in row else '条')
 
 
 def rank_rows_html(report):
@@ -282,8 +286,8 @@ def rank_rows_html(report):
     for row in ranked_participants(report):
         name = str(row.get('name') or row.get('display_name') or row.get('author') or '未知成员')
         identity = row.get('username') or row.get('id') or row.get('participant_id') or row.get('account_id') or row.get('user_id') or row.get('author_id') or row.get('speaker_id')
-        count = row.get('count', row.get('messages', 0)) or 0
-        result.append(f"<li>{_avatar_html(identity, name, avatars)}<span class='rank-name'>{escape(name)}</span><strong>{escape(str(count))}条</strong></li>")
+        value, unit = rank_value(row)
+        result.append(f"<li>{_avatar_html(identity, name, avatars)}<span class='rank-name'>{escape(name)}</span><strong>{escape(str(value))} {escape(unit)}</strong></li>")
     return ''.join(result)
 
 
@@ -336,28 +340,27 @@ def render_html(report):
             parts.append('<details><summary>查看来源</summary><ul class="sources">' + source_messages_html(refs, avatars, timezone) + '</ul></details>')
         parts.append('</article>')
     parts.append('</section>')
-    if edition == 'review':
-        quotes = report.get('quotes') or []
-        if quotes:
-            parts.append('<section class="card"><h2>群友金句</h2>')
-            for quote in quotes:
-                text = quote.get('text')
-                if not text:
-                    continue
-                source = _quote_source(quote)
-                speaker = escape(str(quote.get('speaker') or source.get('author') or '群友'))
-                raw_time = quote.get('time') or source.get('time')
-                if not raw_time and source.get('timestamp') is not None:
-                    raw_time = time_text(source.get('timestamp'), '%m.%d %H:%M', timezone)
-                when = escape(str(raw_time or ''))
-                footer = speaker + (f' · {when}' if when else '')
-                if source.get('text') or source.get('image_src') or source.get('image_sources'):
-                    footer += '<details><summary>查看来源</summary><ul class="sources">' + source_messages_html([source], avatars, timezone) + '</ul></details>'
-                parts.append('<blockquote><p>' + escape(str(text)) + '</p><footer>' + footer + '</footer></blockquote>')
-            parts.append('</section>')
-        rank = report.get('active_rank') or report.get('participants') or []
-        if rank:
-            parts.append('<section class="card"><h2>活跃前20名</h2><ol class="rank">' + rank_rows_html(report) + '</ol></section>')
+    quotes = [q for q in report.get('quotes') or [] if q.get('text')]
+    if quotes:
+        parts.append('<section class="card"><h2>群友金句</h2>')
+        for quote in quotes:
+            text = quote.get('text')
+            if not text:
+                continue
+            source = _quote_source(quote)
+            speaker = escape(str(quote.get('speaker') or source.get('author') or '群友'))
+            raw_time = quote.get('time') or source.get('time')
+            if not raw_time and source.get('timestamp') is not None:
+                raw_time = time_text(source.get('timestamp'), '%m.%d %H:%M', timezone)
+            when = escape(str(raw_time or ''))
+            footer = speaker + (f' · {when}' if when else '')
+            if source.get('text') or source.get('image_src') or source.get('image_sources'):
+                footer += '<details><summary>查看来源</summary><ul class="sources">' + source_messages_html([source], avatars, timezone) + '</ul></details>'
+            parts.append('<blockquote><p>' + escape(str(text)) + '</p><footer>' + footer + '</footer></blockquote>')
+        parts.append('</section>')
+    rank = ranked_participants(report)
+    if rank:
+        parts.append('<section class="card"><h2>活跃前20名</h2><ol class="rank">' + rank_rows_html(report) + '</ol></section>')
     parts.append('</main></body></html>')
     return ''.join(parts)
 
@@ -401,10 +404,9 @@ def render_png_pillow(report, output_path):
         measure_texts.extend((str(topic.get('topic') or '未命名话题'), str(topic.get('summary') or ''), topic_time_range(topic, timezone)))
         details = topic.get('details')
         measure_texts.extend(str(item) for item in (details if isinstance(details, list) else [details]))
-    if report.get('edition') != 'brief':
-        measure_texts.extend(f"{q.get('speaker') or '群友'}：{q.get('text') or ''}" for q in report.get('quotes') or [] if q.get('text'))
-        rank_rows = report.get('participants') or report.get('active_rank') or []
-        measure_texts.extend(f"{row.get('name') or row.get('display_name') or '未知成员'}　{row.get('count', row.get('messages', 0))}条" for row in rank_rows[:20])
+    measure_texts.extend(f"{q.get('speaker') or '群友'}：{q.get('text') or ''}" for q in report.get('quotes') or [] if q.get('text'))
+    rank_rows = ranked_participants(report)
+    measure_texts.extend(f"{row.get('name') or row.get('display_name') or '未知成员'}　{rank_value(row)[0]} {rank_value(row)[1]}" for row in rank_rows)
     estimated_height = 1200 + 100 * len(topics)
     for value in measure_texts:
         text = str(value)
@@ -485,15 +487,16 @@ def render_png_pillow(report, output_path):
         if isinstance(details, list):
             for detail in details: text_block(str(detail))
         elif details: text_block(str(details))
-    if report.get('edition') != 'brief':
-        quotes = [q for q in report.get('quotes') or [] if q.get('text')]
-        if quotes:
-            section('群友金句')
-            for q in quotes: text_block(f'{q.get("speaker") or "群友"}：{q["text"]}')
-        rank = ranked_participants(report)
-        if rank:
-            section('活跃前20名')
-            for index, row in enumerate(rank, 1): text_block(f'{index}. {row.get("name") or row.get("display_name") or "未知成员"}　{row.get("count", row.get("messages", 0))}条')
+    quotes = [q for q in report.get('quotes') or [] if q.get('text')]
+    if quotes:
+        section('群友金句')
+        for q in quotes:
+            text_block(f'{q.get("speaker") or "群友"}：{q["text"]}')
+    rank = ranked_participants(report)
+    if rank:
+        section('活跃前20名')
+        for index, row in enumerate(rank, 1):
+            text_block(f'{index}. {row.get("name") or row.get("display_name") or "未知成员"}　{rank_value(row)[0]} {rank_value(row)[1]}')
     # Final resize removes the unused initial canvas height but keeps every rendered line.
     canvas = canvas.crop((0, 0, width, max(1, y+margin)))
     path = Path(output_path)

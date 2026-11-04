@@ -4,6 +4,7 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     PYTHONPATH=/ocr-deps:/source:/source/memory:/source/agent_console:/tool:/tool/vendor \
     TZ=Asia/Shanghai \
+    TIKTOKEN_CACHE_DIR=/opt/tiktoken-cache \
     WECHAT_DIGEST_FONT=/source/assets/fonts/ResourceHanRoundedCN-Regular.ttf
 
 RUN apt-get update \
@@ -11,6 +12,9 @@ RUN apt-get update \
     && rm -rf /var/lib/apt/lists/*
 COPY requirements.txt /tmp/requirements.txt
 RUN pip install --no-cache-dir -r /tmp/requirements.txt
+RUN mkdir -p /opt/tiktoken-cache \
+    && python -c "import tiktoken; tiktoken.get_encoding('o200k_base')" \
+    && chmod -R a-w /opt/tiktoken-cache
 
 COPY memory /source/memory
 COPY agent_console /source/agent_console

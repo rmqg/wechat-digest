@@ -23,6 +23,13 @@ CALIBRATION_PATH = RUNTIME / "ui-calibration.json"
 SENDER_PATH = ROOT / "deployment" / "send-report.py"
 
 
+def _machine_label() -> str:
+    value = os.environ.get("WECHAT_DIGEST_MACHINE") or os.uname().nodename.split(".")[0]
+    if not value or len(value) > 64 or not all(char.isalnum() or char in "._-" for char in value):
+        return "machine-unknown"
+    return value
+
+
 def _read_json(path: Path) -> dict:
     value = json.loads(path.read_text(encoding="utf-8"))
     if not isinstance(value, dict):
@@ -89,6 +96,28 @@ def observe() -> str:
         raise RuntimeError
     return status
 
+def _failure_context(status: str, error: Exception | None = None) -> dict:
+    if error is not None:
+        location, stage, error_type = "deployment/wechat-watchdog.py:observe", "探针/容器观察", type(error).__name__
+        evidence = "Docker桌面容器探针；runtime/ui-calibration.json"
+    elif status == "offline":
+        location, stage, error_type = "deployment/wechat-watchdog.py:classify_windows", "窗口状态判断", "LoginWindowDetected"
+        evidence = "Docker桌面容器窗口探针"
+    else:
+        location, stage, error_type = "deployment/wechat-watchdog.py:classify_windows", "窗口状态判断", "NoMatchingWindow"
+        evidence = "Docker桌面容器窗口探针"
+    if not error_type.replace("_", "").isalnum():
+        error_type = "UnknownError"
+    return {"location": location, "stage": stage, "error_type": error_type, "evidence": evidence, "status": status}
+
+
+def _context_text(context: dict | None) -> str:
+    if not isinstance(context, dict):
+        context = {"location": "来源未知", "stage": "阶段未知", "error_type": "未知", "evidence": "runtime/wechat-watchdog/state.json"}
+    return (f"机器{_machine_label()}/wechat-digest-desktop微信观察服务；{context.get('location', '来源未知')}；"
+            f"阶段{context.get('stage', '阶段未知')}；类型{context.get('error_type', '未知')}；"
+            f"证据{context.get('evidence', 'runtime/wechat-watchdog/state.json')}")[:320]
+
 
 def _notify(config: dict, title: str, body: str, level: str) -> bool:
     payload = json.dumps({"title": title, "body": body, "group": config["group"], "level": level},
@@ -142,19 +171,20 @@ def transition(state: dict, observed: str, now: float) -> dict:
 
 def _send_pending(state: dict, config: dict, notifier=_notify) -> bool:
     kind = state.get("pending")
+    context = _context_text(state.get("failure_context"))
     if kind == "failure":
-        if state["status"] == "unavailable":
-            title, body = "微信状态无法确认", "目前无法确认微信是否在线，请检查桌面窗口。"
-        else:
-            title, body = "微信可能已掉线", "检测到微信登录窗口，请检查微信登录状态。"
+        title = "微信状态无法确认" if state["status"] == "unavailable" else "微信可能已掉线"
+        body = f"微信状态{state['status']}；{context}。"
         level = config["fail_level"]
     elif kind == "recovery":
-        title, body, level = "微信聊天界面已恢复", "已检测到微信主聊天界面；这不代表网络健康状态。", config["recovery_level"]
+        title, body, level = "微信聊天界面已恢复", f"检测到微信主聊天界面；这不代表网络健康状态。原故障：{context}。", config["recovery_level"]
     else:
         return False
     if notifier(config, title, body, level):
         state["pending"] = None
         state["failure_notified"] = kind == "failure"
+        if kind == "recovery":
+            state.pop("failure_context", None)
         return True
     return False
 
@@ -173,17 +203,24 @@ def tick(config_path: Path = CONFIG_PATH, state_path: Path = STATE_PATH, observe
             return {"status": "busy", "state": None, "notified": False, "pending": None}
         try:
             stamp = time.time() if now is None else now
+            error = None
             try:
                 status = observer()
                 if status not in ("online", "offline", "unavailable"):
                     status = "unavailable"
-            except Exception:
+            except Exception as exc:
+                error = exc
                 status = "unavailable"
+            observed_context = None if status == "online" else _failure_context(status, error)
             try:
                 state = _read_json(state_path)
             except FileNotFoundError:
                 state = {}
+            if observed_context is not None and not isinstance(state.get("failure_context"), dict):
+                state["failure_context"] = observed_context
             state["checked_at"] = stamp
+            if state.get("failure_notified") and not isinstance(state.get("failure_context"), dict):
+                state["failure_context"] = _failure_context(state.get("status", "unavailable"))
             transition(state, status, stamp)
             notified = _send_pending(state, config, notifier)
             _write_state(state, state_path)
@@ -195,7 +232,9 @@ def tick(config_path: Path = CONFIG_PATH, state_path: Path = STATE_PATH, observe
 
 def test_notify(config_path: Path = CONFIG_PATH) -> bool:
     config = _load_config(config_path)
-    return _notify(config, "微信掉线提醒测试", "这是一条测试通知，监测状态未被修改。", config["fail_level"])
+    body = (f"机器{_machine_label()}/wechat-digest-desktop微信观察服务；测试通知，不代表发生故障。入口 "
+            "deployment/wechat-watchdog.py:test_notify；阶段测试发送；证据 runtime/wechat-watchdog/state.json（未修改）。")
+    return _notify(config, "微信观察测试通知", body, config["fail_level"])
 
 
 def main(argv: list[str] | None = None) -> int:

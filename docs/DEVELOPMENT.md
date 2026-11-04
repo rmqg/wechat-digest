@@ -8,6 +8,8 @@
 python3 -m venv .venv
 . .venv/bin/activate
 python -m pip install -r requirements-dev.txt
+export TIKTOKEN_CACHE_DIR="$PWD/.cache/tiktoken"
+python -c "import tiktoken; tiktoken.get_encoding('o200k_base')"
 ```
 
 核心依赖锁在 `requirements.txt`；OCR 在 `deployment/ocr-requirements.txt` 单独维护。不要为了运行普通解密/报告测试安装所有大型 OCR 组件。CJK 字体随 `assets/fonts/` 提供并保留 OFL，`WECHAT_DIGEST_FONT` 可指定另一个有权使用的字体。

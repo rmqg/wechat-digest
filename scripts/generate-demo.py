@@ -87,11 +87,6 @@ def _image(path: Path) -> None:
 def _records() -> tuple[dict, dict, dict]:
     start = 1793145600  # 2026-10-28T00:00:00Z
     end = start + 86400
-    participants = [
-        {"account_id": "synthetic-alex", "name": "林小满", "count": 2},
-        {"account_id": "synthetic-bo", "name": "周禾", "count": 2},
-        {"account_id": "synthetic-cen", "name": "陈星", "count": 1},
-    ]
     messages = [
         {"message_uid": "SYN-M001", "reference": "M001", "author_id": "synthetic-alex", "author": "林小满", "timestamp": start + 3600, "type": "text", "text": "周末的社区花园活动改到周六上午，入口旁边集合。"},
         {"message_uid": "SYN-M002", "reference": "M002", "author_id": "synthetic-bo", "author": "周禾", "timestamp": start + 3900, "type": "text", "text": "收到，我会带上工具箱。"},
@@ -99,6 +94,12 @@ def _records() -> tuple[dict, dict, dict]:
         {"message_uid": "SYN-M004", "reference": "M004", "author_id": "synthetic-alex", "author": "林小满", "timestamp": start + 7200, "type": "forward", "text": "转发：社区花园分区安排\nA区：香草\nB区：花苗", "forward_xml": "forward.xml"},
         {"message_uid": "SYN-M005", "reference": "M005", "author_id": "synthetic-bo", "author": "周禾", "timestamp": start + 10800, "type": "image", "text": "示意图已附（合成图，不是聊天原图）。", "image": "garden-plan.png", "missing_image_reference": "synthetic-missing-image.png"},
     ]
+    names = {message["author_id"]: message["author"] for message in messages}
+    tokens = {identity: 0 for identity in names}
+    for message in messages:
+        tokens[message["author_id"]] += daily_report.message_body_token_count(message["text"], message["type"])
+    participants = [{"account_id": identity, "name": names[identity], "tokens": tokens[identity]}
+                    for identity in sorted(tokens, key=lambda key: (-tokens[key], key))]
     refs = [{"message_uid": m["message_uid"], "reference": m["reference"], "author": m["author"], "author_id": m["author_id"], "timestamp": m["timestamp"], "type": m["type"], "text": m["text"]} for m in messages]
     refs[-1]['image_src'] = 'garden-plan.png'
     buckets = daily_report.build_rhythm_buckets((message['timestamp'] for message in messages), start, end)
@@ -113,14 +114,13 @@ def _records() -> tuple[dict, dict, dict]:
         "one_line": "合成示例：成员协商周六的社区花园活动安排，并分配了准备工作。",
         "topics": [{"topic": "社区花园活动安排", "summary": "活动定在周六上午，成员讨论集合地点与物资分工。", "details": ["林小满提出在入口旁集合。", "周禾准备工具箱，陈星负责标签。", "转发内容展示了虚构的分区安排。"], "message_ids": [m['message_uid'] for m in messages], "reference_ids": [m['reference'] for m in messages], "references": refs, "start_unix": start + 3600, "end_unix": start + 10800, "participant_ids": ["synthetic-alex", "synthetic-bo", "synthetic-cen"]}],
         "participants": participants, "active_rank": participants,
-        "leaders": {"peak": {"name": "2026-10-28 01:00", "count": 2}},
+        "leaders": {"talk": participants[0] if participants else {"name": "--", "tokens": 0}, "peak": {"name": "2026-10-28 01:00", "count": 2}},
         "rhythm_buckets": buckets,
+        "quotes": [{"speaker": "周禾", "speaker_id": "synthetic-bo", "text": refs[1]['text'], "time": "01:05", "source": refs[1]}],
         "avatars": {}, "synthetic_example": True,
     }
     brief = {**common, "edition": "brief"}
-    review = {**common, "edition": "review", "quotes": [
-        {"speaker": "周禾", "speaker_id": "synthetic-bo", "text": refs[1]['text'], "time": "01:05", "source": refs[1]},
-    ]}
+    review = {**common, "edition": "review"}
     snapshot = {"synthetic_example": True, "group_id": "synthetic-demo-chat", "window": common["window"], "messages": messages}
     return brief, review, snapshot
 
@@ -175,23 +175,34 @@ def generate_qq_demo(output: Path) -> None:
         {"message_uid": "QQ-SYN-001", "author": "林小满", "author_id": "1000000101",
          "timestamp": start + 3600, "type": "text", "text": "虚构测试记录：周六上午整理社区花园工具。"},
         {"message_uid": "QQ-SYN-002", "author": "周禾", "author_id": "1000000102",
-         "timestamp": start + 3900, "type": "image", "text": "虚构的示意图已附。",
+         "timestamp": start + 3900, "type": "image", "text": "[图片]",
          "image_sources": [f"assets/{image_name}"]},
         {"message_uid": "QQ-SYN-003", "author": "陈星", "author_id": "1000000103",
          "timestamp": start + 4200, "type": "text", "text": "我来准备标签，以上均为离线虚构内容。"},
     ]
+    sender_names = {message["author_id"]: message["author"] for message in messages}
+    token_totals = {identity: 0 for identity in sender_names}
+    for message in messages:
+        if message["type"] not in {"system", "recall"}:
+            token_totals[message["author_id"]] += daily_report.body_token_count(message["text"])
+    active_rank = [{"username": identity, "name": sender_names[identity], "tokens": token_totals[identity]}
+                   for identity in sorted(token_totals, key=lambda key: (-token_totals[key], key))]
     common = {"chat_username": f"qq:{group_id}", "chat_display": "合成演示群（虚构）",
               "day": "2026-10-28", "range_text": "2026.10.27 17:00 — 2026.10.28 17:00",
               "generated_at": "离线合成示例", "stats": {"messages": 3, "members": 3, "images": 1},
               "rhythm_buckets": daily_report.build_rhythm_buckets(
                   (message["timestamp"] for message in messages), start, end),
-              "leaders": {"peak": {"name": "18:00", "count": 3}}}
+              "leaders": {"talk": active_rank[0] if active_rank else {"name": "--", "tokens": 0},
+                          "peak": {"name": "18:00", "count": 3}}, "participants": active_rank,
+              "active_rank": active_rank,
+              "quotes": [{"speaker": messages[2]["author"], "speaker_id": messages[2]["author_id"],
+                          "text": messages[2]["text"], "source": dict(messages[2])}]}
     brief = {**common, "title_prefix": "QQ群日报", "edition": "brief",
              "one_line": "离线合成内容：群友安排了一次社区花园准备活动。",
              "topics": [{"topic": "周末准备", "summary": "群友计划整理花园工具并准备标签。",
                          "details": ["集合时间为周六上午。"],
                          "references": [{key: value for key, value in messages[0].items()}]}],
-             "quotes": [], "active_rank": []}
+             }
     review = {**common, "title_prefix": "QQ群总结", "edition": "review",
               "one_line": "离线合成内容：活动准备分工已初步明确。",
               "topics": [{"topic": "时间与分工", "summary": "周六上午整理工具，陈星负责标签。",
@@ -199,8 +210,7 @@ def generate_qq_demo(output: Path) -> None:
                           "references": [{key: value for key, value in message.items()} for message in messages]},
                          {"topic": "图示", "summary": "示意图为本地程序自制合成图。",
                           "details": [], "references": [dict(messages[1])]}],
-              "quotes": [{"speaker": "陈星", "text": "我来准备标签。"}],
-              "active_rank": [{"name": "林小满", "count": 1}, {"name": "周禾", "count": 1}, {"name": "陈星", "count": 1}]}
+              }
     for edition, report in (("brief", brief), ("review", review)):
         _save_json(output / f"qq-{edition}.json", report)
         (output / f"qq-{edition}.html").write_text(daily_report.render_html(report), encoding="utf-8")

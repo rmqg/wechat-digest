@@ -19,7 +19,7 @@ The font license, copyright statements and reserved-font-name restrictions apply
 
 - [nickrunning/wechat-selkies](https://github.com/nickrunning/wechat-selkies): MIT source project; the Compose file references its external image. The image contains independently licensed components and the proprietary WeChat client. This repository does not claim MIT rights over the WeChat client or republish its binaries.
 - [WeChat](https://www.wechat.com/) / [WCDB](https://github.com/Tencent/wcdb) are Tencent projects and trademarks. Use of the official client is subject to its own terms. This project is not affiliated with Tencent.
-- Python, Pillow (HPND), pillow-heif (BSD), PyCryptodome (BSD/public-domain components), python-zstandard (BSD), OpenSSL, SQLite, GNU GDB/binutils and operating-system packages retain their own licenses. Installing/building a worker image does not relicense those packages. Consult their package metadata and original sources for notices and applicable source obligations when redistributing an image.
+- Python, Pillow (HPND), pillow-heif (BSD), PyCryptodome (BSD/public-domain components), python-zstandard (BSD), tiktoken (MIT), regex (Apache-2.0), OpenSSL, SQLite, GNU GDB/binutils and operating-system packages retain their own licenses. Installing/building a worker image does not relicense those packages. Consult their package metadata and original sources for notices and applicable source obligations when redistributing an image.
 - Optional OCR dependencies under `deployment/ocr-requirements.txt` retain their upstream licenses; no OCR model license is replaced by the project's MIT license.
 
 ## Explicitly excluded local reference materials

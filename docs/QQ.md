@@ -27,7 +27,7 @@ install -m 600 /dev/null /srv/qq-digest/runtime/onebot.token
 python3 scripts/install-ocr.py --target /srv/qq-digest/ocr-deps --wheel-dir /srv/qq-digest/ocr-wheels
 # 运行 worker 时将 /srv/qq-digest/ocr-deps 加入 PYTHONPATH；已有 wheel 可用 --offline 安装。
 # 或构建包含该 OCR 层的 Linux x86-64 工具镜像：
-docker build --build-arg WITH_OCR=1 -t wechat-digest-runtime:1.1.1 .
+docker build --build-arg WITH_OCR=1 -t wechat-digest-runtime:1.2.0 .
 ```
 
 相对路径以 JSON 配置文件所在目录为基准。服务配置至少应明确 `onebot_url`、`onebot_token_file`、`group_id`、`group_name`、`expected_self_id`、`bot_names`、`runtime_dir`、`reports_dir`、`model_config`、`enabled_from` 和 `daily_hour`。`enabled_from` 是 Unix 秒时间戳，防止启用前的历史消息被当作新触发。模板中的群、账号、密码、URL 和 token 路径均为虚构/占位，必须替换；不得将真实 token 或 API key 放入仓库。
@@ -55,6 +55,12 @@ QQ worker 使用已鉴权的 OneBot v11 WebSocket API；网站服务才使用 HT
 - 报告为空时不得生成/投递空白摘要；拒绝发送不是成功回执。永久不可重试的请求会终止并需修正输入，暂时性网络/API故障按有限退避恢复。
 - 两版生成后，先持久化任务对应的路径与 PNG SHA-256，再提交发送。续发只读这组固定产物，不重新调用模型、改写源快照或覆盖已确认版本；迟到同步的消息只进入新任务。固定产物缺失、越界或指纹不符时停止并人工核查，不能重新生成冒充原版。旧任务已提交或结果未知但没有固定产物记录时也停止；两版已有确认回执的任务可直接恢复为完成，不重发。
 - 每个任务使用独立产物名，避免同窗口不同请求互相覆盖。生成 CLI 的 `--request-id` 接受 32 或 64 位小写十六进制任务标识；省略时生成新 UUID。服务传入持久任务 ID；不要对已确认发送的任务手动重跑生成 CLI，也不要修改任务 ID 来绕过发送状态。
+
+## 过期群图片定位
+
+worker 仅在需要生成含图片的任务时，先用已验证的 OneBot 登录账号与目标群连接调用只读 `get_rkey`（空参数），从返回列表选择唯一 `type == "group"` 记录。由于接口记录不带群号，服务将此票据与已核验的配置 `group_id` 绑定，写入运行目录下 `0700` 子目录中的 `0600` 临时 JSON；CLI 只接收文件路径，结束后删除，票据不进入参数、日志、报告或源快照。
+
+有效图片 SHA 缓存仍优先使用。仅当原图获取阶段对该 URL 收到 HTTP 400，才用当前 group rkey 对同一 URL 重试一次：只替换 query 中的 `rkey` 值，保留原 host、path、fileid 和其他 query 字节；不会跳过/缩小图片，也不会改变原消息 UID、图片描述缓存键或模型输入。其他 HTTP 状态和摘要模型错误不会触发此图片重试；永久摘要请求 400 与图片获取阶段的错误按独立阶段诊断。
 
 ## Web 报告服务与共用入口
 

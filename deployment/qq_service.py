@@ -604,6 +604,53 @@ class QQService:
                        (attempt, now + delay, type(error).__name__, task_id))
             db.commit()
 
+    def _record_cli_failure(self, task_id: str | None, details: dict[str, Any]) -> Path | None:
+        if not task_id:
+            return None
+        directory = self.runtime_dir / "qq-digest" / "task-failures"
+        _secure_directory(directory)
+        name = hashlib.sha256(task_id.encode("utf-8")).hexdigest() + ".json"
+        path = directory / name
+        temporary = path.with_suffix(".tmp")
+        temporary.write_text(json.dumps(details, ensure_ascii=False), encoding="utf-8")
+        os.chmod(temporary, 0o600)
+        os.replace(temporary, path)
+        return path
+
+    def _write_group_rkey_file(self, task_id: str) -> Path:
+        client = self._open_verified()
+        try:
+            records = client.rpc("get_rkey", {})
+        finally:
+            self._close_client(client)
+        if not isinstance(records, list):
+            raise RuntimeError("OneBot group rkey response is invalid")
+        group_records = [record for record in records
+                         if isinstance(record, dict) and record.get("type") == "group"]
+        if len(group_records) != 1:
+            raise RuntimeError("OneBot group rkey response is ambiguous")
+        rkey = group_records[0].get("rkey")
+        if (not isinstance(rkey, str) or not rkey.startswith("&rkey=")
+                or not rkey[len("&rkey="):] or any(c in rkey[len("&rkey="):] for c in "&?#\r\n")
+                or any(c.isspace() for c in rkey)):
+            raise RuntimeError("OneBot group rkey response is invalid")
+        directory = self.runtime_dir / "qq-digest"
+        if directory.is_symlink():
+            raise RuntimeError("QQ private runtime directory must not be a symbolic link")
+        _secure_directory(directory)
+        identity = hashlib.sha256(task_id.encode("utf-8")).hexdigest()
+        path = directory / f"group-rkey-{identity}-{uuid.uuid4().hex}.json"
+        temporary = path.with_suffix(".tmp")
+        try:
+            temporary.write_text(json.dumps({"group_id": self.group_id, "type": "group", "rkey": rkey}),
+                                 encoding="utf-8")
+            os.chmod(temporary, 0o600)
+            os.replace(temporary, path)
+        except BaseException:
+            temporary.unlink(missing_ok=True)
+            raise
+        return path
+
     def _run_digest_cli(self, args: dict[str, Any]) -> dict[str, Any]:
         command = [sys.executable, str(DEPLOYMENT / "qq_digest.py"),
                    "--sources-json", str(args["sources_path"]),
@@ -614,15 +661,61 @@ class QQService:
                    "--start", str(args["start"]), "--end", str(args["end"])]
         if self.fallback_config:
             command.extend(("--fallback-config", str(self.fallback_config)))
+        task_id = str(args["task_id"]) if args.get("task_id") else uuid.uuid4().hex
         if args.get("task_id"):
-            command.extend(("--request-id", str(args["task_id"])))
-        completed = subprocess.run(command, check=False, capture_output=True, text=True, timeout=3600)
+            command.extend(("--request-id", task_id))
+        messages = args.get("messages")
+        rkey_file = None
+        if isinstance(messages, list) and any(message.get("type") == "image" and message.get("image_items")
+                                              for message in messages if isinstance(message, dict)):
+            rkey_file = self._write_group_rkey_file(task_id)
+            command.extend(("--group-rkey-file", str(rkey_file)))
+        try:
+            completed = subprocess.run(command, check=False, capture_output=True, text=True, timeout=3600)
+        finally:
+            if rkey_file is not None:
+                rkey_file.unlink(missing_ok=True)
         if completed.returncode != 0:
-            if re.search(r'\bHTTP\s+400\b', completed.stderr or ''):
-                raise PermanentTaskError('provider rejected the unchanged generation request')
+            try:
+                error = json.loads(completed.stderr)
+            except (TypeError, ValueError):
+                error = {}
+            if not isinstance(error, dict):
+                error = {}
+            stage = error.get("stage")
+            provider_400 = (error.get("error_type") == "PermanentProviderRequestError"
+                            and error.get("origin") == "model_provider"
+                            and error.get("http_status") == 400
+                            and stage in {"summary:brief", "summary:review"})
+            origin = error.get("origin")
+            if origin not in {"model_provider", "provider", "qq_digest"}:
+                origin = "qq_digest_cli"
+            status = error.get("http_status")
+            if type(status) is not int or not 100 <= status <= 599:
+                status = None
+            source = error.get("source")
+            if not isinstance(source, str) or len(source) > 160:
+                source = None
+            raw_provider_error = error.get("provider_error")
+            provider_error = {}
+            if isinstance(raw_provider_error, dict):
+                for field, limit in (("code", 80), ("type", 80), ("param", 80), ("message", 512)):
+                    value = raw_provider_error.get(field)
+                    if isinstance(value, str) and value:
+                        provider_error[field] = value[:limit]
+            message_uid = error.get("message_uid")
+            if not isinstance(message_uid, str) or len(message_uid) > 200:
+                message_uid = None
+            details = {"task_id": task_id, "stage": stage if isinstance(stage, str) else "unknown",
+                       "error_type": error.get("error_type") if isinstance(error.get("error_type"), str) else "CLIError",
+                       "origin": origin, "http_status": status, "source": source,
+                       "message_uid": message_uid, "provider_error": provider_error,
+                       "returncode": completed.returncode}
+            diagnostic_path = self._record_cli_failure(task_id, details)
+            if provider_400:
+                raise PermanentTaskError(f"model provider rejected {stage}; private diagnostic: {diagnostic_path}")
             raise RuntimeError("qq_digest CLI failed")
-        result = json.loads(completed.stdout)
-        return result
+        return json.loads(completed.stdout)
 
     def _write_sources(self, task: dict[str, Any], messages: list[dict[str, Any]], output_dir: Path) -> Path:
         _secure_directory(output_dir)

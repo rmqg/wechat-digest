@@ -59,6 +59,63 @@ def _worker_identity(project: dict) -> tuple[int, int]:
     return int(project["worker_uid"]), int(project["worker_gid"])
 
 
+def _known_failure(function: str, stage: str, error_type: str) -> dict:
+    return {"failure_location": {"file": "deployment/" + Path(__file__).name, "function": function},
+            "stage": stage, "error_type": error_type}
+
+
+def _failure_context(exc: Exception, stage: str, submitted: bool = False) -> dict:
+    # Capture code locations only: never serialize frame locals or exception payloads.
+    trace = exc.__traceback__
+    location = None
+    origin = None
+    while trace is not None:
+        code = trace.tb_frame.f_code
+        function = code.co_qualname
+        if "<" in function:
+            function = code.co_name
+        origin = {"file": Path(code.co_filename).name, "function": function, "line": trace.tb_lineno}
+        if code.co_filename == __file__:
+            location = {**origin, "file": "deployment/" + Path(__file__).name}
+        trace = trace.tb_next
+    location = location or origin or {"file": "deployment/" + Path(__file__).name, "function": "unknown"}
+    function = location["function"].rsplit(".", 1)[-1]
+    if function in ("_calibrated_window", "checked_png", "checked_text"):
+        stage = "artifact_validation"
+    elif function in ("find_window", "_select_window", "_target_windows"):
+        stage = "window_lookup"
+    elif "window" in function or "focus" in function or function == "activate":
+        stage = "window_validation"
+    elif function in ("click", "key", "chord", "press", "type_ascii"):
+        stage = "submit" if submitted else "ui_input"
+    elif "draft" in function or "composer" in function or "clipboard" in function:
+        stage = "draft_verification"
+    elif function in ("screenshot", "image_match", "send_button_ready"):
+        stage = "visual_verification"
+    elif function in ("unique_target", "source_context", "decrypted_snapshot", "message_databases", "scan_all", "query_group_rows"):
+        stage = "receipt_confirmation" if submitted else "source_validation"
+    result = {"failure_location": location, "stage": stage, "error_type": type(exc).__name__}
+    if origin is not None and origin != location:
+        result["failure_origin"] = origin
+    return result
+
+
+def desktop_is_running(container: str) -> bool:
+    try:
+        result = subprocess.run(["docker", "container", "inspect", "--format", "{{.State.Running}}", container],
+                                capture_output=True, text=True, timeout=30)
+    except (OSError, subprocess.SubprocessError):
+        return False
+    return result.returncode == 0 and result.stdout.strip() == "true"
+
+
+def desktop_unavailable(chat_name: str | None, chat_id: str | None, digest: str, **details) -> dict:
+    return {"status": "failed", "sent": False, "before_submit": True,
+            "chat_name": chat_name, "chat_id": chat_id, **details, "sha256": digest,
+            **_known_failure("desktop_is_running", "worker_start", "DesktopUnavailable"),
+            "error": "desktop container is not running or its status could not be verified; delivery worker was not started"}
+
+
 def sha256_file(path: Path) -> str:
     digest = hashlib.sha256()
     with path.open("rb") as stream:
@@ -106,6 +163,8 @@ def host_send_text(text_file: Path, do_send: bool, expected_chat_id: str, expect
         return {"status": "prepared", "sent": False, "chat_name": chat_name,
                 "chat_id": chat_id, "sha256": text_hash,
                 "note": "No GUI action or message send; pass --send explicitly."}
+    if not desktop_is_running(project["desktop_container"]):
+        return desktop_unavailable(chat_name, chat_id, text_hash)
     image = settings.runtime_image("runtime", ROOT)
     uid, gid = _worker_identity(project)
     gui_data = RUNTIME / "gui"
@@ -152,22 +211,26 @@ def host_send_text(text_file: Path, do_send: bool, expected_chat_id: str, expect
                 f"/messages/{path.name}", "--chat-id", expected_chat_id, "--expected-sha256", text_hash]
     try:
         result = subprocess.run(command, capture_output=True, text=True, timeout=180)
-    except subprocess.TimeoutExpired:
+    except subprocess.TimeoutExpired as exc:
         return {"status": "unknown", "sent": None, "before_submit": False, "chat_name": chat_name,
                 "chat_id": chat_id, "sha256": text_hash,
+                **_failure_context(exc, "worker_timeout", True),
                 "error": "delivery runtime timed out; do not resend"}
     try:
         outcome = json.loads(result.stdout.strip().splitlines()[-1])
     except (IndexError, json.JSONDecodeError):
-        return {"status": "unknown" if result.returncode else "failed", "sent": None,
-                "before_submit": False if result.returncode else True,
+        outcome = None
+    if not isinstance(outcome, dict):
+        return {"status": "unknown", "sent": None, "before_submit": False,
                 "chat_name": chat_name, "chat_id": chat_id, "sha256": text_hash,
-                "error": "worker returned no receipt"}
+                **_known_failure("host_send_text", "worker_receipt", "MissingWorkerReceipt"),
+                "error": "worker returned no receipt; do not resend"}
     ui_evidence = outcome.get("ui_evidence")
     if isinstance(ui_evidence, str) and ui_evidence.startswith("/evidence/"):
         outcome["ui_evidence"] = str(evidence / Path(ui_evidence).name)
     if result.returncode and outcome.get("status") not in {"failed", "unknown"}:
         outcome.update(status="unknown", sent=None, reason="worker exited after reporting; do not resend")
+        outcome.update(**_known_failure("host_send_text", "worker_receipt", "WorkerExitedAfterReceipt"))
     return outcome
 
 
@@ -187,6 +250,8 @@ def host_send(png: Path, do_send: bool, expected_chat_id: str) -> dict:
         return {"status": "prepared", "sent": False, "chat_name": chat_name,
                 "chat_id": chat_id, "png": str(png), "sha256": png_hash,
                 "note": "No GUI action or message send; pass --send explicitly."}
+    if not desktop_is_running(project["desktop_container"]):
+        return desktop_unavailable(chat_name, chat_id, png_hash, png=str(png))
     image = settings.runtime_image("runtime", ROOT)
     uid, gid = _worker_identity(project)
     gui_data = RUNTIME / "gui"
@@ -228,15 +293,19 @@ def host_send(png: Path, do_send: bool, expected_chat_id: str) -> dict:
                 "--chat-id", expected_chat_id, "--expected-sha256", png_hash]
     try:
         result = subprocess.run(command, capture_output=True, text=True, timeout=180)
-    except subprocess.TimeoutExpired:
-        return {"status": "unknown", "sent": None, "chat_name": chat_name, "chat_id": chat_id,
+    except subprocess.TimeoutExpired as exc:
+        return {"status": "unknown", "sent": None, "before_submit": False, "chat_name": chat_name, "chat_id": chat_id,
+                **_failure_context(exc, "worker_timeout", True),
                 "png": str(png), "sha256": png_hash, "error": "delivery runtime timed out; do not resend"}
     try:
         outcome = json.loads(result.stdout.strip().splitlines()[-1])
     except (IndexError, json.JSONDecodeError):
-        return {"status": "unknown" if result.returncode else "failed", "sent": None,
+        outcome = None
+    if not isinstance(outcome, dict):
+        return {"status": "unknown", "sent": None, "before_submit": False,
                 "chat_name": chat_name, "chat_id": chat_id, "png": str(png), "sha256": png_hash,
-                "error": (result.stderr or result.stdout or "worker returned no receipt")[-4000:]}
+                **_known_failure("host_send", "worker_receipt", "MissingWorkerReceipt"),
+                "error": "worker returned no receipt; do not resend"}
     outcome["host_png"] = str(png)
     outcome["host_png_sha256"] = png_hash
     ui_evidence = outcome.get("ui_evidence")
@@ -245,6 +314,7 @@ def host_send(png: Path, do_send: bool, expected_chat_id: str) -> dict:
     if result.returncode and outcome.get("status") not in {"failed", "unknown"}:
         outcome.update(status="unknown", sent=None,
                        reason="worker exited after reporting without a successful process exit; do not resend")
+        outcome.update(**_known_failure("host_send", "worker_receipt", "WorkerExitedAfterReceipt"))
     return outcome
 
 
@@ -295,6 +365,16 @@ class XEvent(ctypes.Union):
                 ("xselection", XSelectionEvent), ("pad", ctypes.c_long * 24)]
 
 
+def _calibrated_window(config: dict) -> dict:
+    window = config.get("window")
+    fields = {"x", "y", "width", "height"}
+    if (not isinstance(window, dict) or set(window) != fields or
+            any(type(window[field]) is not int for field in fields) or
+            window["width"] <= 0 or window["height"] <= 0):
+        raise ValueError("UI calibration window must define integer reference x/y and positive template width/height")
+    return window
+
+
 class X11:
     ZPIXMAP = 2
     IS_VIEWABLE = 2
@@ -317,6 +397,8 @@ class X11:
         if not self.display:
             raise RuntimeError(f"cannot connect to X11 DISPLAY={display_name}")
         self.root = self.x.XDefaultRootWindow(self.display)
+        self._delivery_config: dict | None = None
+        self._delivery_window: dict | None = None
         self._selection_thread: threading.Thread | None = None
         self._selection_stop = threading.Event()
         self._selection_error: list[str] = []
@@ -346,6 +428,8 @@ class X11:
         x.XGetWindowProperty.restype = ctypes.c_int
         x.XRaiseWindow.argtypes = [ctypes.c_void_p, ctypes.c_ulong]; x.XRaiseWindow.restype = ctypes.c_int
         x.XSetInputFocus.argtypes = [ctypes.c_void_p, ctypes.c_ulong, ctypes.c_int, ctypes.c_ulong]
+        x.XGrabServer.argtypes = [ctypes.c_void_p]; x.XGrabServer.restype = ctypes.c_int
+        x.XUngrabServer.argtypes = [ctypes.c_void_p]; x.XUngrabServer.restype = ctypes.c_int
         x.XCloseDisplay.argtypes = [ctypes.c_void_p]; x.XCloseDisplay.restype = ctypes.c_int
         x.XExtendedMaxRequestSize.argtypes = [ctypes.c_void_p]; x.XExtendedMaxRequestSize.restype = ctypes.c_long
         x.XMaxRequestSize.argtypes = [ctypes.c_void_p]; x.XMaxRequestSize.restype = ctypes.c_long
@@ -423,58 +507,179 @@ class X11:
             ctypes.byref(actual_type), ctypes.byref(actual_format), ctypes.byref(count),
             ctypes.byref(remaining), ctypes.byref(data))
         try:
-            if status != 0 or actual_format.value != 32 or remaining.value or not data:
+            if (status != 0 or actual_type.value != 33 or actual_format.value != 32 or remaining.value or
+                    (count.value and not data)):
                 raise RuntimeError('window manager did not provide its application window list')
+            if not count.value:
+                return []
             return list(ctypes.cast(data, ctypes.POINTER(ctypes.c_ulong))[:count.value])
         finally:
             if data:
                 self.x.XFree(data)
 
-    def find_window(self, config: dict) -> dict:
-        expected = config["window"]
-        pattern = str(config.get("window_title_substring", "Weixin"))
+    def _target_windows(self, config: dict) -> tuple[list[dict], list[tuple[int, str]]]:
+        pattern = str(config.get("window_title_substring", "Weixin")).casefold()
         matches = []
         visible_titles = []
         for candidate in self._client_windows():
             attrs = XWindowAttributes()
-            if not self.x.XGetWindowAttributes(self.display, candidate, ctypes.byref(attrs)) or attrs.map_state != self.IS_VIEWABLE:
+            if not self.x.XGetWindowAttributes(self.display, candidate, ctypes.byref(attrs)):
                 continue
             title = self._window_title(candidate)
-            if title:
+            if attrs.map_state == self.IS_VIEWABLE:
                 visible_titles.append((candidate, title))
-            if pattern.casefold() not in title.casefold():
+            if pattern not in title.casefold():
                 continue
             rx, ry, child = ctypes.c_int(), ctypes.c_int(), ctypes.c_ulong()
-            self.x.XTranslateCoordinates(self.display, candidate, self.root, 0, 0,
-                                         ctypes.byref(rx), ctypes.byref(ry), ctypes.byref(child))
-            info = {'window_id': candidate, 'title': title, 'x': rx.value, 'y': ry.value,
-                    'width': attrs.width, 'height': attrs.height, 'visual': attrs.visual}
-            if all(info[k] == int(expected[k]) for k in ('x', 'y', 'width', 'height')):
-                matches.append(info)
+            if not self.x.XTranslateCoordinates(self.display, candidate, self.root, 0, 0,
+                                                ctypes.byref(rx), ctypes.byref(ry), ctypes.byref(child)):
+                raise RuntimeError("cannot read root position of Weixin client window")
+            matches.append({"window_id": int(candidate), "title": title, "x": rx.value, "y": ry.value,
+                            "width": attrs.width, "height": attrs.height, "visual": attrs.visual,
+                            "map_state": attrs.map_state})
+        return matches, visible_titles
+    def _override_redirect_windows(self, main: dict) -> list[tuple[int, str]]:
+        # Reparenting window managers wrap the client in their own override-redirect
+        # frame. That ancestor is not an independent dialog or an occluding surface.
+        ancestors = set()
+        for client in self._client_windows():
+            attrs = XWindowAttributes()
+            if (not self.x.XGetWindowAttributes(self.display, client, ctypes.byref(attrs)) or
+                    attrs.map_state != self.IS_VIEWABLE):
+                continue
+            current = int(client)
+            chain = {current}
+            while current != self.root:
+                root, parent, count = ctypes.c_ulong(), ctypes.c_ulong(), ctypes.c_uint()
+                children = ctypes.POINTER(ctypes.c_ulong)()
+                try:
+                    if not self.x.XQueryTree(self.display, current, ctypes.byref(root), ctypes.byref(parent),
+                                             ctypes.byref(children), ctypes.byref(count)):
+                        raise RuntimeError("cannot verify managed window ancestry")
+                finally:
+                    if children:
+                        self.x.XFree(children)
+                current = int(parent.value)
+                if not current or current in chain:
+                    raise RuntimeError("invalid managed window ancestry")
+                chain.add(current)
+            ancestors.update(chain)
+        candidates = list(self._children(self.root))
+        pending = list(self._children(main["window_id"]))
+        seen = set(candidates)
+        while pending:
+            candidate = pending.pop()
+            if candidate in seen:
+                continue
+            seen.add(candidate)
+            candidates.append(candidate)
+            pending.extend(self._children(candidate))
+        visible = []
+        for candidate in candidates:
+            if candidate in ancestors:
+                continue
+            attrs = XWindowAttributes()
+            if (not self.x.XGetWindowAttributes(self.display, candidate, ctypes.byref(attrs)) or
+                    not attrs.override_redirect or attrs.map_state != self.IS_VIEWABLE):
+                continue
+            rx, ry, child = ctypes.c_int(), ctypes.c_int(), ctypes.c_ulong()
+            if not self.x.XTranslateCoordinates(self.display, candidate, self.root, 0, 0,
+                                                ctypes.byref(rx), ctypes.byref(ry), ctypes.byref(child)):
+                raise RuntimeError("cannot verify possible Weixin overlay position")
+            # A desktop toolbar wholly outside this client cannot intercept its
+            # relative clicks. Unnamed overlays inside the client still block input.
+            if (rx.value < main["x"] + main["width"] and rx.value + attrs.width > main["x"] and
+                    ry.value < main["y"] + main["height"] and ry.value + attrs.height > main["y"]):
+                visible.append((candidate, self._window_title(candidate)))
+        return visible
+
+
+
+    def _select_window(self, config: dict) -> dict:
+        matches, visible_titles = self._target_windows(config)
+        if not matches:
+            raise RuntimeError("Weixin client window not found")
         if len(matches) != 1:
-            raise RuntimeError(f"expected one calibrated Weixin client window; found {len(matches)}")
+            raise RuntimeError(f"ambiguous Weixin client windows: {len(matches)} candidates")
         main = matches[0]
+        if main["map_state"] != self.IS_VIEWABLE:
+            raise RuntimeError("Weixin client window is hidden or unmapped")
         allowed = set(config.get("allowed_visible_window_titles", []))
+        visible_titles.extend(self._override_redirect_windows(main))
         unexpected = [(wid, title) for wid, title in visible_titles
-                      if title != main["title"] and title not in allowed]
+                      if wid != main["window_id"] and title not in allowed]
         if unexpected:
             raise RuntimeError(f"unexpected visible window/dialog: {unexpected!r}")
         return main
+
+    def _screen_size(self) -> tuple[int, int]:
+        attrs = XWindowAttributes()
+        if not self.x.XGetWindowAttributes(self.display, self.root, ctypes.byref(attrs)):
+            raise RuntimeError("cannot read X11 root-screen dimensions")
+        return attrs.width, attrs.height
+
+    def _inside_screen(self, window: dict) -> bool:
+        screen_width, screen_height = self._screen_size()
+        return (window["x"] >= 0 and window["y"] >= 0 and
+                window["x"] + window["width"] <= screen_width and
+                window["y"] + window["height"] <= screen_height)
+
+    def find_window(self, config: dict) -> dict:
+        expected = _calibrated_window(config)
+        main = self._select_window(config)
+        expected_size = (expected["width"], expected["height"])
+        actual_size = (main["width"], main["height"])
+        if actual_size != expected_size:
+            raise RuntimeError(f"Weixin client window has wrong size {actual_size}; expected template size {expected_size}")
+        if not self._inside_screen(main):
+            raise RuntimeError(f"Weixin client window is cropped/offscreen: geometry {main!r}, screen {self._screen_size()!r}")
+        self._delivery_config = {
+            "window": dict(expected),
+            "window_title_substring": str(config.get("window_title_substring", "Weixin")),
+            "allowed_visible_window_titles": list(config.get("allowed_visible_window_titles", [])),
+        }
+        self._delivery_window = dict(main)
+        return main
+
+    def _assert_window_stable(self, window: dict) -> dict:
+        baseline = self._delivery_window
+        config = self._delivery_config
+        if baseline is None or config is None:
+            raise RuntimeError("Weixin client window has not been calibrated for this delivery")
+        if int(window.get("window_id", -1)) != baseline["window_id"]:
+            raise RuntimeError("Weixin target instance changed during delivery")
+        current = self._select_window(config)
+        if current["window_id"] != baseline["window_id"]:
+            raise RuntimeError("Weixin target instance changed during delivery")
+        if (current["width"], current["height"]) != (baseline["width"], baseline["height"]):
+            raise RuntimeError(f"Weixin window size changed during delivery: {(current['width'], current['height'])!r}")
+        if not self._inside_screen(current):
+            raise RuntimeError(f"Weixin window moved outside the X11 screen during delivery: {current!r}")
+        if (current["x"], current["y"]) != (baseline["x"], baseline["y"]):
+            raise RuntimeError(f"Weixin window moved during delivery: origin {(baseline['x'], baseline['y'])!r} -> {(current['x'], current['y'])!r}")
+        return current
+
     def activate(self, win: dict) -> None:
-        self.x.XRaiseWindow(self.display, win["window_id"])
-        self.x.XSetInputFocus(self.display, win["window_id"], 2, self.CURRENT_TIME)
+        current = self._assert_window_stable(win)
+        self.x.XRaiseWindow(self.display, current["window_id"])
+        self.x.XSetInputFocus(self.display, current["window_id"], 2, self.CURRENT_TIME)
         self.x.XSync(self.display, 0)
         time.sleep(0.15)
+        if not self.focus_within(win):
+            raise RuntimeError("Weixin window did not retain input focus")
+
     def focus_within(self, window: dict) -> bool:
+        current = self._assert_window_stable(window)
         focused, revert = ctypes.c_ulong(), ctypes.c_int()
         self.x.XGetInputFocus(self.display, ctypes.byref(focused), ctypes.byref(revert))
-        allowed = {int(window["window_id"])}
-        stack = [int(window["window_id"])]
+        allowed = {int(current["window_id"])}
+        stack = [int(current["window_id"])]
         while stack:
             parent = stack.pop()
             children = self._children(parent)
             allowed.update(children)
             stack.extend(children)
+        self._assert_window_stable(window)
         return int(focused.value) in allowed
 
     @staticmethod
@@ -487,16 +692,15 @@ class X11:
 
     def screenshot(self, win: dict):
         from PIL import Image
+        current = self._assert_window_stable(win)
         attrs = XWindowAttributes()
-        if not self.x.XGetWindowAttributes(self.display, win["window_id"], ctypes.byref(attrs)):
-            raise RuntimeError("cannot read calibrated WeChat window attributes")
-        rx, ry, child = ctypes.c_int(), ctypes.c_int(), ctypes.c_ulong()
-        self.x.XTranslateCoordinates(self.display, win["window_id"], self.root, 0, 0,
-                                     ctypes.byref(rx), ctypes.byref(ry), ctypes.byref(child))
-        pointer = self.x.XGetImage(self.display, self.root, rx.value, ry.value, attrs.width, attrs.height,
+        if not self.x.XGetWindowAttributes(self.display, current["window_id"], ctypes.byref(attrs)):
+            raise RuntimeError("cannot read calibrated Weixin window attributes")
+        current = self._assert_window_stable(win)
+        pointer = self.x.XGetImage(self.display, self.root, current["x"], current["y"], attrs.width, attrs.height,
                                    ctypes.c_ulong(-1).value, self.ZPIXMAP)
         if not pointer:
-            raise RuntimeError("XGetImage failed")
+            raise RuntimeError("XGetImage failed for the full Weixin window")
         data = ctypes.cast(pointer, ctypes.POINTER(XImageData)).contents
         try:
             stride = int(data.bytes_per_line)
@@ -516,26 +720,34 @@ class X11:
             elif bits == 24 and masks == (0x000000FF, 0x0000FF00, 0x00FF0000):
                 mode = "RGB" if order == 0 else "BGR"
             if mode:
-                return Image.frombuffer("RGB", (attrs.width, attrs.height), raw,
-                                        "raw", mode, stride, 1).copy()
-            bytes_per_pixel = (bits + 7) // 8
-            pixels = bytearray(attrs.width * attrs.height * 3)
-            offset = 0
-            endian = "little" if order == 0 else "big"
-            for y in range(attrs.height):
-                row_offset = y * stride
-                for x in range(attrs.width):
-                    start = row_offset + x * bytes_per_pixel
-                    value = int.from_bytes(raw[start:start + bytes_per_pixel], endian)
-                    pixels[offset] = self._mask_component(value, masks[0])
-                    pixels[offset + 1] = self._mask_component(value, masks[1])
-                    pixels[offset + 2] = self._mask_component(value, masks[2])
-                    offset += 3
-            return Image.frombytes("RGB", (attrs.width, attrs.height), bytes(pixels))
+                image = Image.frombuffer("RGB", (attrs.width, attrs.height), raw,
+                                         "raw", mode, stride, 1).copy()
+            else:
+                bytes_per_pixel = (bits + 7) // 8
+                pixels = bytearray(attrs.width * attrs.height * 3)
+                offset = 0
+                endian = "little" if order == 0 else "big"
+                for y in range(attrs.height):
+                    row_offset = y * stride
+                    for x in range(attrs.width):
+                        start = row_offset + x * bytes_per_pixel
+                        value = int.from_bytes(raw[start:start + bytes_per_pixel], endian)
+                        pixels[offset] = self._mask_component(value, masks[0])
+                        pixels[offset + 1] = self._mask_component(value, masks[1])
+                        pixels[offset + 2] = self._mask_component(value, masks[2])
+                        offset += 3
+                image = Image.frombytes("RGB", (attrs.width, attrs.height), bytes(pixels))
+            self._assert_window_stable(win)
+            return image
         finally:
             self.x.XDestroyImage(pointer)
 
     def key(self, name: str, down: bool) -> None:
+        if down:
+            window = self._delivery_window or {}
+            self._assert_window_stable(window)
+            if not self.focus_within(window):
+                raise RuntimeError("Weixin client window lost input focus before keyboard input")
         sym = self.x.XStringToKeysym(name.encode("ascii"))
         if not sym:
             raise RuntimeError(f"unknown X11 keysym {name}")
@@ -544,11 +756,29 @@ class X11:
             raise RuntimeError(f"XTest could not inject key {name}")
 
     def press(self, name: str) -> None:
-        self.key(name, True); self.x.XFlush(self.display); time.sleep(0.035); self.key(name, False); self.x.XFlush(self.display)
+        self.key(name, True)
+        try:
+            self.x.XFlush(self.display)
+            time.sleep(0.035)
+        finally:
+            self.key(name, False)
+            self.x.XFlush(self.display)
 
     def chord(self, modifier: str, key: str) -> None:
-        self.key(modifier, True); self.key(key, True); self.x.XFlush(self.display)
-        time.sleep(0.04); self.key(key, False); self.key(modifier, False); self.x.XFlush(self.display)
+        self.key(modifier, True)
+        key_down = False
+        try:
+            self.key(key, True)
+            key_down = True
+            self.x.XFlush(self.display)
+            time.sleep(0.04)
+        finally:
+            try:
+                if key_down:
+                    self.key(key, False)
+            finally:
+                self.key(modifier, False)
+                self.x.XFlush(self.display)
 
     def type_ascii(self, text: str) -> None:
         for char in text:
@@ -559,34 +789,72 @@ class X11:
             code = self.x.XKeysymToKeycode(self.display, ord(char))
             if not code:
                 raise RuntimeError(f"unsupported ASCII key {char!r}")
-            shifted = char.isupper() or char in "~!@#$%^&*()_+{}|:\"<>?"
+            shifted = char.isupper() or char in '~!@#$%^&*()_+{}|:"<>?'
             if shifted:
                 self.key("Shift_L", True)
+            key_down = False
             try:
-                self.xtst.XTestFakeKeyEvent(self.display, code, 1, self.CURRENT_TIME)
-                self.xtst.XTestFakeKeyEvent(self.display, code, 0, self.CURRENT_TIME)
+                window = self._delivery_window or {}
+                if not self.focus_within(window):
+                    raise RuntimeError("Weixin client window lost input focus before typing")
+                if not self.xtst.XTestFakeKeyEvent(self.display, code, 1, self.CURRENT_TIME):
+                    raise RuntimeError(f"XTest could not inject ASCII key {char!r}")
+                key_down = True
+                self.x.XFlush(self.display)
             finally:
-                if shifted:
-                    self.key("Shift_L", False)
+                try:
+                    if key_down and not self.xtst.XTestFakeKeyEvent(self.display, code, 0, self.CURRENT_TIME):
+                        raise RuntimeError(f"XTest could not release ASCII key {char!r}")
+                finally:
+                    if shifted:
+                        self.key("Shift_L", False)
             self.x.XFlush(self.display)
             time.sleep(0.018)
 
-    def click(self, window: dict, point: list[int]) -> None:
+    def click(self, window: dict, point: list[int], on_submit_state=None) -> None:
+        """Inject a validated click; the optional bool callback marks the uncertain press boundary.
+
+        False is reported only when libXtst explicitly rejects the button-down request.
+        Validation failures occur before the callback; errors after True are uncertain.
+        """
         if len(point) != 2:
             raise ValueError("calibration coordinates must be [x,y]")
         x, y = map(int, point)
-        if not (0 <= x < window["width"] and 0 <= y < window["height"]):
-            raise ValueError("calibration click is outside WeChat window")
-        if not self.xtst.XTestFakeMotionEvent(self.display, -1, window["x"] + x, window["y"] + y, self.CURRENT_TIME):
-            raise RuntimeError("XTest mouse motion failed")
-        if not self.xtst.XTestFakeButtonEvent(self.display, 1, 1, self.CURRENT_TIME):
-            raise RuntimeError("XTest mouse press failed")
-        self.x.XFlush(self.display)
-        time.sleep(0.04)
-        if not self.xtst.XTestFakeButtonEvent(self.display, 1, 0, self.CURRENT_TIME):
-            raise RuntimeError("XTest mouse release failed")
-        self.x.XFlush(self.display)
-
+        current = self._assert_window_stable(window)
+        if not (0 <= x < current["width"] and 0 <= y < current["height"]):
+            raise ValueError("calibration click is outside Weixin window")
+        self.x.XGrabServer(self.display)
+        button_down = False
+        release_ok = True
+        try:
+            current = self._assert_window_stable(window)
+            if not self.xtst.XTestFakeMotionEvent(self.display, -1, current["x"] + x, current["y"] + y, self.CURRENT_TIME):
+                raise RuntimeError("XTest mouse motion failed")
+            self.x.XSync(self.display, 0)
+            self._assert_window_stable(window)
+            button_down = True
+            if on_submit_state is not None:
+                on_submit_state(True)
+            if not self.xtst.XTestFakeButtonEvent(self.display, 1, 1, self.CURRENT_TIME):
+                button_down = False
+                if on_submit_state is not None:
+                    on_submit_state(False)
+                raise RuntimeError("XTest refused mouse press; no button event was accepted")
+            if not self.xtst.XTestFakeButtonEvent(self.display, 1, 0, self.CURRENT_TIME):
+                raise RuntimeError("XTest mouse release failed after button-down")
+            button_down = False
+            self.x.XSync(self.display, 0)
+        finally:
+            try:
+                if button_down:
+                    release_ok = bool(self.xtst.XTestFakeButtonEvent(self.display, 1, 0, self.CURRENT_TIME))
+            finally:
+                try:
+                    self.x.XUngrabServer(self.display)
+                finally:
+                    self.x.XSync(self.display, 0)
+            if not release_ok:
+                raise RuntimeError("XTest could not release mouse button after button-down")
     def close(self) -> None:
         if self.display:
             self.x.XCloseDisplay(self.display)
@@ -1038,15 +1306,16 @@ def worker_send(png_path: Path, expected_chat_id: str, expected_sha256: str) -> 
     display = str(calibration.get("display", ":99"))
     if display != ":99":
         raise ValueError("calibrated DISPLAY must be exactly :99")
-    fixed_window = {"x": 181, "y": 117, "width": 917, "height": 667}
-    if calibration.get("window") != fixed_window:
-        raise ValueError(f"UI calibration window must be the fixed geometry {fixed_window}")
+    _calibrated_window(calibration)
     source_root, keys = source_context()
     os.umask(0o077)
     temp_context = tempfile.TemporaryDirectory(prefix="wechat-send-", dir="/tmp")
     temp = Path(temp_context.name); os.chmod(temp, 0o700)
     x11 = None
     submitted = False
+    def mark_submit_state(started: bool) -> None:
+        nonlocal submitted
+        submitted = started
     baseline = {}
     chat_table = "Msg_" + hashlib.md5(CHAT_ID.encode("utf-8")).hexdigest()
     evidence_dir = Path("/evidence")
@@ -1108,9 +1377,14 @@ def worker_send(png_path: Path, expected_chat_id: str, expected_sha256: str) -> 
             raise RuntimeError('compose field lost focus before submit')
         # Submit once, then use the target conversation's server receipt as the result.
         start_epoch = int(time.time())
-        submitted = True
         x11.activate(window)
-        x11.click(window, calibration['send_button'])
+        if not x11.focus_within(window):
+            raise RuntimeError('Weixin window did not retain input focus before submit')
+        final_screen = x11.screenshot(window)
+        header_ok, _ = image_match(final_screen, header_rect, header_template, header_threshold, header_bad_fraction)
+        if not header_ok:
+            raise RuntimeError('target header changed immediately before image submit')
+        x11.click(window, calibration['send_button'], on_submit_state=mark_submit_state)
         time.sleep(float(calibration.get("send_settle_seconds", 1.5)))
 
         deadline = time.monotonic() + float(calibration.get("confirmation_timeout_seconds", 25))
@@ -1125,6 +1399,7 @@ def worker_send(png_path: Path, expected_chat_id: str, expected_sha256: str) -> 
             return {"status": "unknown", "sent": None, "chat_name": CHAT_NAME, "chat_id": CHAT_ID,
                     "png": str(png_path), "sha256": png_hash,
                     "reason": "no new self-authored image with nonzero server_id confirmed in target DB; do not resend",
+                    **_known_failure("worker_send", "receipt_confirmation", "ReceiptUnconfirmed"),
                     "ui_evidence": str(after_evidence), "baseline_local_ids": baseline}
         return {"status": "sent", "sent": True, "confirmed": True,
                 "chat_name": CHAT_NAME, "chat_id": CHAT_ID, "png": str(png_path), "sha256": png_hash,
@@ -1137,6 +1412,7 @@ def worker_send(png_path: Path, expected_chat_id: str, expected_sha256: str) -> 
         return {"status": "unknown" if submitted else "failed", "sent": None if submitted else False,
                 "before_submit": not submitted, "chat_name": CHAT_NAME, "chat_id": CHAT_ID,
                 "png": str(png_path), "sha256": png_hash,
+                **_failure_context(exc, "image_delivery", submitted),
                 "error": f"{type(exc).__name__}: {exc}",
                 "ui_evidence": str(after_evidence) if after_evidence.exists() else None,
                 "baseline_local_ids": baseline or None}
@@ -1159,15 +1435,16 @@ def worker_send_text(text_path: Path, expected_chat_id: str, expected_sha256: st
     calibration = load_json(CALIBRATION_PATH)
     if calibration.get("version") != 1 or str(calibration.get("display", ":99")) != ":99":
         raise ValueError("calibrated UI version or DISPLAY mismatch")
-    fixed_window = {"x": 181, "y": 117, "width": 917, "height": 667}
-    if calibration.get("window") != fixed_window:
-        raise ValueError("UI calibration window geometry mismatch")
+    _calibrated_window(calibration)
     source_root, keys = source_context()
     os.umask(0o077)
     temp_context = tempfile.TemporaryDirectory(prefix="wechat-send-text-", dir="/tmp")
     temp = Path(temp_context.name); os.chmod(temp, 0o700)
     x11 = None
     submitted = False
+    def mark_submit_state(started: bool) -> None:
+        nonlocal submitted
+        submitted = started
     baseline = {}
     table = "Msg_" + hashlib.md5(CHAT_ID.encode("utf-8")).hexdigest()
     stamp = time.strftime("%Y%m%d-%H%M%S", time.gmtime())
@@ -1219,11 +1496,15 @@ def worker_send_text(text_path: Path, expected_chat_id: str, expected_sha256: st
             raise RuntimeError("target header changed while verifying text draft")
 
         x11.click(window, calibration["compose"])
+        x11.activate(window)
         if not x11.focus_within(window):
             raise RuntimeError("WeChat window did not retain input focus before submit")
+        final_screen = x11.screenshot(window)
+        header_ok, _ = image_match(final_screen, header_rect, header_template, header_threshold, header_bad_fraction)
+        if not header_ok:
+            raise RuntimeError("target header changed immediately before text submit")
         start_epoch = int(time.time())
-        submitted = True
-        x11.click(window, calibration['send_button'])
+        x11.click(window, calibration['send_button'], on_submit_state=mark_submit_state)
         time.sleep(float(calibration.get("send_settle_seconds", 1.5)))
         deadline = time.monotonic() + float(calibration.get("confirmation_timeout_seconds", 25))
         receipt = None
@@ -1237,6 +1518,7 @@ def worker_send_text(text_path: Path, expected_chat_id: str, expected_sha256: st
         if not receipt:
             return {"status": "unknown", "sent": None, "before_submit": False, "chat_id": CHAT_ID,
                     "sha256": text_hash, "reason": "no unique matching self-authored text in target DB; do not resend",
+                    **_known_failure("worker_send_text", "receipt_confirmation", "ReceiptUnconfirmed"),
                     "ui_evidence": str(after_evidence)}
         return {"status": "sent", "sent": True, "confirmed": True, "before_submit": False,
                 "chat_name": CHAT_NAME, "chat_id": CHAT_ID, "sha256": text_hash,
@@ -1248,6 +1530,7 @@ def worker_send_text(text_path: Path, expected_chat_id: str, expected_sha256: st
         # Never serialize exception text: clipboard and DB providers may include private content.
         return {"status": "unknown" if submitted else "failed", "sent": None if submitted else False,
                 "before_submit": not submitted, "chat_id": CHAT_ID, "sha256": text_hash,
+                **_failure_context(exc, "text_delivery", submitted),
                 "error": type(exc).__name__,
                 "ui_evidence": str(after_evidence) if after_evidence.exists() else None,
                 "baseline_local_ids": baseline or None}
@@ -1286,14 +1569,15 @@ def main() -> int:
             result = host_send(args.png, args.send, args.chat_id)
         print(json.dumps(result, ensure_ascii=False))
         return 0 if result.get("status") in {"prepared", "sent"} else 3 if result.get("status") == "unknown" else 1
-    except subprocess.TimeoutExpired:
+    except subprocess.TimeoutExpired as exc:
         result = {"status": "unknown" if args.send else "failed", "sent": None if args.send else False,
-                  "before_submit": not args.send, "error": "delivery runtime timed out; do not resend unless before_submit is true"}
+                  "before_submit": not args.send, "error": "delivery runtime timed out; do not resend unless before_submit is true",
+                  **_failure_context(exc, "worker_timeout", args.send)}
         print(json.dumps(result, ensure_ascii=False))
         return 3 if args.send else 1
     except Exception as exc:
         result = {"status": "failed", "sent": False, "before_submit": True,
-                  "error": type(exc).__name__}
+                  "error": type(exc).__name__, **_failure_context(exc, "host_preparation")}
         print(json.dumps(result, ensure_ascii=False))
         return 1
 

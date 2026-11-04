@@ -192,6 +192,13 @@ class DeliveryStateTests(unittest.TestCase):
                 self.assertEqual(json.loads(state_path.read_text())["editions"]["brief"]["status"], "sent")
                 self.assertEqual(json.loads(state_path.read_text())["editions"]["review"]["status"], "failed")
                 self.assertEqual(daily.run_tick(now)["status"], "sent")
+                self.assertNotIn("error", json.loads(state_path.read_text())["editions"]["review"])
+                confirmed = json.loads(state_path.read_text())
+                confirmed["editions"]["review"]["error"] = "historical pre-submit failure"
+                state_path.write_text(json.dumps(confirmed))
+                with patch.object(daily.subprocess, "run", side_effect=AssertionError("confirmed task must not regenerate or resend")):
+                    self.assertEqual(daily.run_tick(now)["status"], "sent")
+                self.assertNotIn("error", json.loads(state_path.read_text())["editions"]["review"])
             self.assertEqual(sends, ["brief", "review", "review"])
             self.assertEqual(notices, ["brief"])
 

@@ -21,11 +21,28 @@ class SyntheticFixtureTests(unittest.TestCase):
             module.generate_qq_demo(output)
             brief = json.loads((output / "qq-brief.json").read_text(encoding="utf-8"))
             review = json.loads((output / "qq-review.json").read_text(encoding="utf-8"))
+            from agent_console.report_metrics import body_token_count
             self.assertEqual(brief["chat_username"], "qq:1000000001")
             self.assertEqual(brief["title_prefix"], "QQ群日报")
             self.assertEqual(review["title_prefix"], "QQ群总结")
+            self.assertTrue(all("tokens" in person and "count" not in person for person in review["participants"]))
+            self.assertEqual(review["stats"]["messages"], 3)
+            self.assertEqual(review["leaders"]["talk"]["tokens"], review["active_rank"][0]["tokens"])
+            caption = next(person for person in review["participants"] if person["username"] == "1000000102")
+            self.assertEqual(caption["tokens"], body_token_count("[图片]"))
             self.assertIn("虚构", (output / "index.html").read_text(encoding="utf-8"))
             self.assertEqual(len(list((output / "assets").glob("[a-f0-9]*.png"))), 1)
+
+    def test_synthetic_wechat_rank_uses_token_schema(self):
+        import importlib.util
+        spec = importlib.util.spec_from_file_location("generate_demo", ROOT / "scripts" / "generate-demo.py")
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        brief, review, _ = module._records()
+        for report in (brief, review):
+            self.assertTrue(report["participants"])
+            self.assertTrue(all("tokens" in person and "count" not in person for person in report["participants"]))
+
     def test_fixture_authenticates_and_wrong_key_or_tampering_fails(self):
         encrypted = FIXTURE / "synthetic-sqlcipher4.db"
         key_record = json.loads((FIXTURE / "fixture-key.json").read_text(encoding="utf-8"))

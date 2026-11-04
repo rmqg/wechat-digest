@@ -63,41 +63,47 @@ class RhythmBucketTests(unittest.TestCase):
         self.assertEqual(daily_report.topic_time_range({"start_unix": start}), "")
 
 
-    def test_edition_titles_and_brief_omits_deep_read_sections(self):
+    def test_brief_renders_quotes_and_token_rank_after_topics(self):
+        quote = {"speaker": "甲", "speaker_id": "u1", "text": "金句正文", "time": "10:01",
+                 "source": {"author": "甲", "author_id": "u1", "timestamp": 1793077260,
+                            "type": "text", "text": "金句正文"}}
         report = {
-            "edition": "brief",
-            "day": "2026-10-27",
-            "chat_username": "group",
-            "chat_display": "测试群",
-            "range_text": "2026-10-27 05:00-2026-10-28 05:00",
-            "generated_at": "now",
-            "one_line": "简报摘要",
+            "edition": "brief", "day": "2026-10-27", "chat_username": "group",
+            "chat_display": "测试群", "range_text": "2026-10-27 05:00-2026-10-28 05:00",
+            "generated_at": "now", "one_line": "简报摘要",
             "stats": {"messages": 12, "members": 3},
             "leaders": {"peak": {"name": "10:00", "count": 4}},
             "rhythm_buckets": [{"start_unix": 1793077200, "count": 1}],
-            'topics': [{'topic': '窗口排查', 'summary': '讨论', 'details': [],
-                        'samples': ['不应自动展开的原始聊天样本'],
-                        'start_unix': 1793077200, 'end_unix': 1793077500}],
-            "quotes": [{"speaker": "甲", "text": "金句不应展示"}],
-            "active_rank": [{"name": "不应排行", "count": 9}],
+            "topics": [{"topic": "窗口排查", "summary": "讨论", "details": [],
+                        "samples": ["不应自动展开的原始聊天样本"],
+                        "start_unix": 1793077200, "end_unix": 1793077500}],
+            "quotes": [quote],
+            "active_rank": [{"username": "u1", "name": "发言成员", "tokens": 19}],
         }
         with patch.object(daily_report, 'rounded_webfont_css', return_value=''):
             brief = visible_text(daily_report.render_html(report))
-            review = visible_text(daily_report.render_html({**report, 'edition': 'review'}))
-            legacy = visible_text(daily_report.render_html({key: value for key, value in report.items() if key != 'edition'}))
-            no_quotes = visible_text(daily_report.render_html({**report, 'edition': 'review', 'quotes': []}))
+            no_quotes = visible_text(daily_report.render_html({**report, "quotes": [{"speaker": "甲", "text": ""}]}))
+            review = visible_text(daily_report.render_html({**report, "edition": "review"}))
         self.assertIn('消息节奏', brief)
         self.assertIn('消息总量', brief)
-        self.assertIn('讨论', brief)
-        self.assertNotIn('群友金句', brief)
-        self.assertNotIn('活跃前20名', brief)
-        self.assertNotIn('金句不应展示', brief)
-        self.assertNotIn('不应排行', brief)
+        self.assertLess(brief.index('窗口排查'), brief.index('群友金句'))
+        self.assertLess(brief.index('群友金句'), brief.index('活跃前20名'))
+        self.assertIn('金句正文', brief)
+        self.assertIn('甲', brief)
+        self.assertIn('查看来源', brief)
+        self.assertIn('发言成员', brief)
+        self.assertIn('19 tokens', brief)
         self.assertNotIn('不应自动展开的原始聊天样本', brief)
-        self.assertIn('群友金句', review)
-        self.assertIn('活跃前20名', review)
         self.assertNotIn('群友金句', no_quotes)
         self.assertIn('活跃前20名', no_quotes)
+        self.assertIn('群友金句', review)
+        self.assertIn('19 tokens', review)
+        without_quotes = {**report, "quotes": []}
+        quote_only = {"edition": "brief", "one_line": quote["text"]}
+        self.assertEqual(daily_report.body_chinese_count(report) - daily_report.body_chinese_count(without_quotes),
+                         daily_report.body_chinese_count(quote_only))
+        without_rank = {**report, "active_rank": []}
+        self.assertEqual(daily_report.body_chinese_count(report), daily_report.body_chinese_count(without_rank))
 
     def test_qq_title_prefix_is_rendered_for_both_editions(self):
         report = {"title_prefix": "QQ群日报", "report_kind": "ignored", "edition": "brief",
@@ -272,6 +278,25 @@ class RhythmBucketTests(unittest.TestCase):
         positions = [float(tick.attrib['cx']) for tick in ticks]
         gaps = [b - a for a, b in zip(positions, positions[1:])]
         self.assertLess(max(gaps) - min(gaps), 0.02)
+
+    def test_token_ranks_render_token_units_while_archived_counts_stay_messages(self):
+        report = {"participants": [
+            {"username": "same-b", "name": "同名", "tokens": 12},
+            {"username": "same-a", "name": "同名", "tokens": 40},
+        ]}
+        rendered = daily_report.rank_rows_html(report)
+        self.assertIn("40 tokens", rendered)
+        self.assertIn("12 tokens", rendered)
+        self.assertEqual([row["username"] for row in daily_report.ranked_participants(report)], ["same-a", "same-b"])
+        archived = daily_report.rank_rows_html({"participants": [{"username": "old", "name": "旧档", "count": 9}]})
+        self.assertIn("9 条", archived)
+
+    def test_token_counter_preserves_literal_text_and_excludes_only_whole_media_placeholders(self):
+        from agent_console.report_metrics import body_token_count, message_body_token_count
+        self.assertGreater(body_token_count("[图片]"), 0)
+        self.assertEqual(message_body_token_count("[图片]", "image"), 0)
+        self.assertGreater(message_body_token_count("图注：花园[图片]", "image"), 0)
+        self.assertEqual(message_body_token_count("用户写了[图片]", "text"), body_token_count("用户写了[图片]"))
 
 
 if __name__ == "__main__":

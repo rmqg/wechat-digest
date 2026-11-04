@@ -15,8 +15,6 @@ class BodyChineseCountTests(unittest.TestCase):
             'stats': {'label': '不算统计'}, 'range_text': '不算时间',
         }
         self.assertEqual(body_chinese_count(report), 15)
-        report['edition'] = 'brief'
-        self.assertEqual(body_chinese_count(report), 13)
 
     def test_explicit_empty_details_do_not_count_hidden_sample_fallback(self):
         report = {'topics': [{'topic': '标题', 'summary': '概述', 'details': [], 'samples': ['旧样本']}]}

@@ -16,8 +16,8 @@
   "worker_uid": 1000,
   "worker_gid": 1000,
   "images": {
-    "runtime": "wechat-digest-runtime:1.1.1",
-    "keyscan": "wechat-digest-runtime:1.1.1",
+    "runtime": "wechat-digest-runtime:1.2.0",
+    "keyscan": "wechat-digest-runtime:1.2.0",
     "desktop": "ghcr.io/nickrunning/wechat-selkies:0.0.12-minimal"
   }
 }

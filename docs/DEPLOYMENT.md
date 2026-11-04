@@ -27,7 +27,7 @@ chmod 0600 runtime/project.json
 
 ```sh
 docker compose --profile tools build runtime
-docker image inspect --format '{{.Id}}' wechat-digest-runtime:1.1.1
+docker image inspect --format '{{.Id}}' wechat-digest-runtime:1.2.0
 ```
 
 上一步的项目配置已指定本机镜像；Compose 默认 desktop image 是 `ghcr.io/nickrunning/wechat-selkies:0.0.12-minimal`，须在审阅来源/架构后使用。限制 `.env` 为 `0600`，不要在命令行/history 回显密码。启动桌面：
@@ -99,6 +99,18 @@ OCR 使用 `rapidocr-onnxruntime` 本地运行，依赖 wheel 清单在 `deploym
 
 上面两个 PATH 要换成实际存在且由当前任务生成的文件；不要对合成样例以外的私人素材伪造示例输出。`--max-images N` 可限制任务数量，默认 0 表示不限。每条输入必须标为 available 且质量为 `original`/`client_full`，资源 SHA256 须匹配；缩略图会被拒绝。输出按消息 key 记录 ok/failed/pending，命令非零或有 failed/pending 时需排查，不能作为已完成证据。
 
+
+发言排行依据每位稳定账号 ID 的原始可读文字 token 总数，英文、中文和 emoji 均精确计数；图片理解、OCR、网页辅助摘要和 XML 不参与。新报告的排行榜单位是 `tokens`，消息总数/参与人数/消息节奏仍按原消息口径。已有报告是不可变历史快照，继续按其旧的消息数显示，不会重算或把消息数解释为 tokens。
+
+固定依赖 `tiktoken==0.14.0`。Docker runtime 构建时预热并只读保留 token cache；直接运行的操作者应先显式预热本地 cache，再将同一路径只读提供给正式 worker：
+
+```sh
+mkdir -p .cache/tiktoken
+export TIKTOKEN_CACHE_DIR="$PWD/.cache/tiktoken"
+.venv/bin/python -c "import tiktoken; tiktoken.get_encoding('o200k_base')"
+```
+
+worker 必须设置 `TIKTOKEN_CACHE_DIR` 到该预热目录。缺少或校验失败的依赖/cache 会明确报错；正式报告生成不会下载词表或退化为估算。不要把 cache 内容提交到仓库。
 ## 报告生成、prepare-only 与发送
 
 先列群组（无模型调用）并确认源账号和 `project.json` 的目标配置相符：

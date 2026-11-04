@@ -3,3 +3,4 @@ zstandard==0.25.0
 Pillow==11.3.0
 pillow-heif==1.8.1
 websockets==16.0
+tiktoken==0.14.0

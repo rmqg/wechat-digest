@@ -13,7 +13,7 @@ bootstrap 初始化/pinning/capture 和 `--list-groups` 不依赖 `group.id/name
 
 报告日期、金句时间、峰值标签，以及 `--start`/`--end` 的无时区 ISO 时间也按项目 `timezone` 解释；显式带偏移的 ISO 时间保留其绝对时间。已生成报告可带自己的 `timezone` 元数据供离线渲染使用；合成样本明确采用 UTC，不依赖运行机器的本地时区。
 
-`images.runtime`、`images.keyscan` 默认 `wechat-digest-runtime:1.1.1`；`images.desktop` 默认 `ghcr.io/nickrunning/wechat-selkies:0.0.12-minimal`。值是本机 image references，需与已安装并运行的镜像对应。runtime/keyscan 必须解析为相同 image ID；desktop 的 ID 要与配置容器的当前 image ID 相同。bootstrap 记录不可变 ID 到 `runtime/image-pins.json`，每次执行校验 config 引用与 pin 一致；不要把标签本身当成内容摘要。示例模板 `examples/project.example.json` 填入这些键，真实群账号标识只存本机，不可发布。
+`images.runtime`、`images.keyscan` 默认 `wechat-digest-runtime:1.2.0`；`images.desktop` 默认 `ghcr.io/nickrunning/wechat-selkies:0.0.12-minimal`。值是本机 image references，需与已安装并运行的镜像对应。runtime/keyscan 必须解析为相同 image ID；desktop 的 ID 要与配置容器的当前 image ID 相同。bootstrap 记录不可变 ID 到 `runtime/image-pins.json`，每次执行校验 config 引用与 pin 一致；不要把标签本身当成内容摘要。示例模板 `examples/project.example.json` 填入这些键，真实群账号标识只存本机，不可发布。
 `runtime/digest/delivery-state.json` 与 on-demand job/receipt、`runtime/digest/sent-receipts/*.json`、`on-demand-receipts/*.json` 是程序拥有的 durable state，不是待手改的设置；记录 edition、window、状态、PNG SHA256/服务端 receipt，用于禁止重复发送。备份/恢复必须原子一致，缺 receipt、发送中断或结果不确定时状态机将进入 `unknown` 并拒绝自动重发。不要删/重置来清理故障。
 
 下面只列出仓库代码实际读取的配置字段；runtime 状态、缓存、收据、报告 JSON 是程序生成数据，不是手工配置。无明确默认值者必须由运维者创建；不要靠放宽校验修复缺项。除非字段明确标为可选，缺少必需项、类型不对或不在允许范围时都应先修配置。所有含 token、密码、API key、个人账号/群标识或登录会话的文件均应以 `0600` 或更严格权限存储，禁止提交。
@@ -40,7 +40,7 @@ bootstrap 初始化/pinning/capture 和 `--list-groups` 不依赖 `group.id/name
 
 ### `runtime/ui-calibration.json` 与 `runtime/ui-calibration/`
 
-手工发送需要已校准 GUI 参数及图像模板目录。JSON 必须包含 `version: 1`、`display: ":99"`、`window` 固定几何 `{"x":181,"y":117,"width":917,"height":667}`，以及发送实现读取的坐标：`search_box`、`search_result`、`header_region`、`message_input`、`send_button`（数组坐标/区域类型须符合代码）。还需 `header_template` 指向 calibration 资产目录中的文件；可选项有 `window_title_substring` 默认 Weixin、`allowed_visible_window_titles` 默认空数组、`header_pixel_threshold` 默认 18、`header_max_bad_fraction` 默认 0.001、`send_settle_seconds` 默认 1.5、`confirmation_timeout_seconds` 默认 25。坐标与模板必须由本机实际 GUI 校准并人工复核，禁止使用别人的截图/坐标或公开包含真实 UI 的资产。错误校准会造成发错目标，先用无发送模式验证。
+手工发送需要已校准 GUI 参数及图像模板目录。JSON 必须包含 `version: 1`、`display: ":99"`、`window`（整数 `x`/`y` 为保留的模板参考原点，正整数 `width`/`height` 为模板适用尺寸；live 窗口只要求精确匹配尺寸，不要求位于参考原点），以及发送实现读取的坐标/区域：点击点 `search_box`、`search_result`、`compose`、`send_button`，标题匹配区域 `header_region`，图像就绪检测区域 `send_button_region`（点和区域须分别符合代码要求）。运行时按既有标题子串和唯一候选识别 Weixin 窗口，要求完整位于 X11 屏幕内，并在每次输入、截图和提交前确认实例、位置、尺寸仍与本次发送开始时一致；隐藏、裁剪、歧义、未知可见窗口/弹窗或途中漂移都会拒绝操作。`allowed_visible_window_titles` 默认空数组，只显式允许列出的额外窗口标题。还需 `header_template` 指向 calibration 资产目录中的文件；可选项有 `window_title_substring` 默认 Weixin、`header_pixel_threshold` 默认 18、`header_max_bad_fraction` 默认 0.001、`send_settle_seconds` 默认 1.5、`confirmation_timeout_seconds` 默认 25。坐标与模板必须由本机实际 GUI 校准并人工复核，禁止使用别人的截图/坐标或公开包含真实 UI 的资产。错误校准会造成发错目标，先用无发送模式验证。
 
 ### `runtime/report-site.json`
 

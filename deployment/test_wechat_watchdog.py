@@ -126,6 +126,22 @@ class WatchdogTests(unittest.TestCase):
             self.assertNotIn("last_failure_sent_at", delivered)
             self.assertEqual(len(calls), 2)
 
+    def test_failure_context_is_retained_in_recovery_and_test_notification(self):
+        state = {"status": "offline", "pending": "failure",
+                 "failure_context": {"location": "deployment/wechat-watchdog.py:observe",
+                                     "stage": "探针/容器观察", "error_type": "TimeoutExpired",
+                                     "evidence": "runtime/ui-calibration.json"}}
+        config = {"fail_level": "active", "recovery_level": "passive"}
+        calls = []
+        self.assertTrue(watchdog._send_pending(state, config, lambda *args: calls.append(args) or True))
+        watchdog.transition(state, "online", 1)
+        self.assertTrue(watchdog._send_pending(state, config, lambda *args: calls.append(args) or True))
+        self.assertIn("TimeoutExpired", calls[-1][2])
+        with patch.object(watchdog, "_load_config", return_value={"group": "fixture", "fail_level": "active"}):
+            with patch.object(watchdog, "_notify", side_effect=lambda *args: calls.append(args) or True):
+                self.assertTrue(watchdog.test_notify())
+        self.assertIn("deployment/wechat-watchdog.py:test_notify", calls[-1][2])
+
     def test_main_login_and_unavailable_window_judgment_ignores_position(self):
         main = {"title": "Weixin", "viewable": True, "width": 917, "height": 667,
                 "x": 10000, "y": -100}

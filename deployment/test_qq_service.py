@@ -7,6 +7,7 @@ import sys
 import tempfile
 import stat
 import unittest
+from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import qq_onebot
@@ -31,6 +32,9 @@ class FakeClient:
             return {"user_id": self.shared["self_id"]}
         if action == "get_group_info":
             return {"group_id": params["group_id"], "group_name": self.shared["group_name"]}
+        if action == "get_rkey":
+            return [{"type": "private", "rkey": "private-ticket"},
+                    {"type": "group", "rkey": "&rkey=fresh-group-ticket", "created_at": 1, "ttl": 3600}]
         raise AssertionError(f"unexpected RPC: {action}")
 
     def send_image(self, group_id, path):
@@ -101,16 +105,75 @@ class QQServiceTests(unittest.TestCase):
         self.assertEqual(self.service.process_next_task(now=self.now + 100), 'rejected')
         self.assertEqual(self.shared['sent'], before)
 
-    def test_invalid_model_request_is_terminal_but_server_failure_can_retry(self):
-        from unittest.mock import patch
+    def test_only_structured_provider_http_400_is_terminal(self):
+        import json
+        import stat
         import subprocess
-        args = {'sources_path': self.root / 'sources.json', 'output_dir': self.root / 'reports', 'start': 0, 'end': 3600}
-        with patch.object(qq_service.subprocess, 'run', return_value=subprocess.CompletedProcess([], 1, '', '{"error":"AI request failed with HTTP 400"}')):
-            with self.assertRaises(qq_service.PermanentTaskError):
+        args = {'task_id': 'a' * 32, 'sources_path': self.root / 'sources.json',
+                'output_dir': self.root / 'reports', 'start': 0, 'end': 3600}
+        provider = ('{"error_type":"PermanentProviderRequestError","origin":"model_provider",'
+                    '"stage":"summary:brief","http_status":400,'
+                    '"source":"deployment/qq_digest.py:_summary_for_edition",'
+                    '"provider_error":{"code":"invalid_request","type":"bad_request",'
+                    '"param":"messages","message":"unsupported field"}}')
+        with patch.object(qq_service.subprocess, 'run', return_value=subprocess.CompletedProcess([], 1, '', provider)):
+            with self.assertRaisesRegex(qq_service.PermanentTaskError, 'summary:brief'):
                 self.service._run_digest_cli(args)
-        with patch.object(qq_service.subprocess, 'run', return_value=subprocess.CompletedProcess([], 1, '', '{"error":"AI request failed with HTTP 502"}')):
+        diagnostic = next((self.service.runtime_dir / 'qq-digest' / 'task-failures').glob('*.json'))
+        details = json.loads(diagnostic.read_text(encoding='utf-8'))
+        self.assertEqual(details['provider_error'], {'code': 'invalid_request', 'type': 'bad_request',
+                                                     'param': 'messages', 'message': 'unsupported field'})
+        self.assertEqual(stat.S_IMODE(diagnostic.stat().st_mode), 0o600)
+        with patch.object(qq_service.subprocess, 'run', return_value=subprocess.CompletedProcess([], 1, '', '{"error":"image fetch failed with HTTP 400"}')):
             with self.assertRaises(RuntimeError):
                 self.service._run_digest_cli(args)
+
+    def test_image_generation_passes_only_private_rkey_file_path(self):
+        from unittest.mock import patch
+        import json
+        import stat
+        import subprocess
+        args = {'task_id': 'b' * 32, 'sources_path': self.root / 'sources.json',
+                'output_dir': self.root / 'reports', 'start': 0, 'end': 3600,
+                'messages': [{'type': 'image', 'image_items': [{'url': 'https://media.invalid/a?rkey=old'}]}]}
+        observed = {}
+
+        def capture(command, **kwargs):
+            path = Path(command[command.index('--group-rkey-file') + 1])
+            observed.update(path=path, command=command,
+                            record=json.loads(path.read_text(encoding='utf-8')),
+                            mode=stat.S_IMODE(path.stat().st_mode))
+            return subprocess.CompletedProcess(command, 0, '{}', '')
+
+        with patch.object(qq_service.subprocess, 'run', side_effect=capture):
+            self.service._run_digest_cli(args)
+        self.assertEqual(observed['record'], {'group_id': self.config['group_id'], 'type': 'group',
+                                               'rkey': '&rkey=fresh-group-ticket'})
+        self.assertEqual(observed['mode'], 0o600)
+        self.assertNotIn('fresh-group-ticket', observed['command'])
+        self.assertFalse(observed['path'].exists())
+        self.assertIn(('get_rkey', {}), self.shared['rpc'])
+
+    def test_image_400_failure_logs_stage_source_and_message_uid(self):
+        from unittest.mock import patch
+        import json
+        import subprocess
+        args = {'task_id': 'c' * 32, 'sources_path': self.root / 'sources.json',
+                'output_dir': self.root / 'reports', 'start': 0, 'end': 3600}
+        stderr = json.dumps({'error_type': 'ValueError', 'stage': 'image_preparation',
+                             'origin': 'qq_digest', 'http_status': 400,
+                             'source': 'qq_digest.py:_fetch_image:180',
+                             'message_uid': 'qq:1000000001:42000123'})
+        with patch.object(qq_service.subprocess, 'run',
+                          return_value=subprocess.CompletedProcess([], 1, '', stderr)):
+            with self.assertRaises(RuntimeError):
+                self.service._run_digest_cli(args)
+        diagnostic = next((self.service.runtime_dir / 'qq-digest' / 'task-failures').glob('*.json'))
+        details = json.loads(diagnostic.read_text(encoding='utf-8'))
+        self.assertEqual(details['stage'], 'image_preparation')
+        self.assertEqual(details['source'], 'qq_digest.py:_fetch_image:180')
+        self.assertEqual(details['http_status'], 400)
+        self.assertEqual(details['message_uid'], 'qq:1000000001:42000123')
 
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()

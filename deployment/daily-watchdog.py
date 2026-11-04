@@ -23,6 +23,79 @@ STATE = RUNTIME / "daily-watchdog" / "state.json"
 DELIVERY = RUNTIME / "digest" / "delivery-state.json"
 
 
+STAGES = {"generate": "生成", "generation-output": "完整性校验", "integrity": "完整性校验",
+          "send": "发送", "sending": "发送", "receipt": "回执确认", "unknown": "回执确认",
+          "overdue": "超期", "state-read": "状态读取", "delivery-state-read": "状态读取", "unreadable": "状态读取",
+          "window_lookup": "窗口定位", "window_validation": "窗口验证", "ui_input": "界面操作",
+          "payload_prepare": "内容准备", "draft_verification": "草稿核验", "visual_verification": "视觉核验",
+          "receipt_confirmation": "回执确认", "worker_start": "worker启动", "worker_receipt": "worker回执",
+          "worker_timeout": "worker超时", "host_preparation": "宿主准备", "artifact_validation": "产物校验",
+          "image_delivery": "图片发送", "text_delivery": "文本发送", "source_validation": "来源校验",
+          "submit": "提交"}
+
+def _machine_label() -> str:
+    value = os.environ.get("WECHAT_DIGEST_MACHINE") or os.uname().nodename.split(".")[0]
+    if not value or len(value) > 64 or not all(char.isalnum() or char in "._-" for char in value):
+        return "machine-unknown"
+    return value
+
+
+def _diagnostic(delivery: dict, status: str, day: str) -> str:
+    editions = delivery.get("editions") if isinstance(delivery.get("editions"), dict) else {}
+    edition = delivery.get("edition")
+    item = editions.get(edition) if edition in ("brief", "review") else None
+    if (not isinstance(item, dict) or (status in ("failed", "unknown")
+            and item.get("status") not in ("failed", "unknown"))):
+        edition, item = next(((key, value) for key, value in editions.items()
+                              if key in ("brief", "review") and isinstance(value, dict)
+                              and value.get("status") in ("failed", "unknown")), (None, {}))
+    confirmation = item.get("confirmation") if isinstance(item.get("confirmation"), dict) else {}
+    location = confirmation.get("failure_location") or delivery.get("failure_location")
+    stage = confirmation.get("stage") or delivery.get("stage")
+    failure_text = delivery.get("error") or item.get("error")
+    if not isinstance(stage, str) and status == "failed" and isinstance(failure_text, str):
+        if failure_text.startswith("invalid generation output:"):
+            stage = "generation-output"
+        elif failure_text.startswith(("invalid prepared editions:", "could not recover confirmed edition bundle:", "prepared report fingerprint changed")):
+            stage = "integrity"
+        elif not editions:
+            stage = "generate"
+    if not isinstance(stage, str):
+        stage = {"unknown": "receipt", "overdue": "overdue", "unreadable": "state-read"}.get(status, "unknown")
+    if not location and stage in ("generate", "generation-output", "integrity"):
+        location = {"file": "deployment/daily-job.py", "function": "run_tick"}
+    elif not location and stage == "state-read":
+        location = {"file": "deployment/daily-watchdog.py", "function": "tick"}
+    elif not location and stage == "overdue":
+        location = {"file": "deployment/daily-watchdog.py", "function": "observe"}
+    if not isinstance(location, dict):
+        location = {}
+    file, function, line = location.get("file"), location.get("function"), location.get("line")
+    file = (file if isinstance(file, str) and file and not file.startswith("/") and "://" not in file
+            and all(part not in ("", ".", "..") for part in file.split("/"))
+            and len(file) <= 180 and all(char.isalnum() or char in "._/-" for char in file) else None)
+    function = (function if isinstance(function, str) and len(function) <= 80 and function
+                and all(char.isalnum() or char in "._<>" for char in function) else None)
+    line = line if type(line) is int and line > 0 else None
+    edition = edition if edition in ("brief", "review") else "版别未知"
+    where = file or "来源未知"
+    if function:
+        where += ":" + function
+    if line and file:
+        where += ":" + str(line) if function else ":line=" + str(line)
+    stage_label = STAGES.get(stage)
+    if stage_label is None:
+        stage_label = stage if (isinstance(stage, str) and 0 < len(stage) <= 48
+                                and stage.isascii() and stage.replace("_", "").isalnum()) else "阶段未知"
+    error_type = confirmation.get("error_type") or delivery.get("error_type") or item.get("error_type")
+    if not isinstance(error_type, str) or len(error_type) > 80 or not error_type.replace("_", "").isalnum():
+        error_type = "未知"
+    evidence = "runtime/daily-watchdog/state.json" if stage == "state-read" or status == "overdue" else "runtime/digest/delivery-state.json"
+    edition_label = "brief+review" if status == "overdue" else edition
+    return (f"机器{_machine_label()}/日报投递监控服务；{day} 日报/{edition_label}：阶段{stage_label}，"
+            f"位置 {where}，原因类型 {error_type}；证据 {evidence}。")[:400]
+
+
 def _defaults() -> dict:
     project = settings.load_project()
     return {"group": "WeChat-Daily", "fail_level": "active", "recovery_level": "passive",
@@ -138,27 +211,37 @@ def tick(config_path: Path = CONFIG, state_path: Path = STATE, delivery_path: Pa
                 delivery = {}
             except (ValueError, OSError):
                 tz = ZoneInfo(config["timezone"])
-                delivery = {"report_day": datetime.fromtimestamp(stamp, tz).date().isoformat(),
-                            "status": "unreadable"}
+                delivery = {"report_day": datetime.fromtimestamp(stamp, tz).date().isoformat(), "status": "unreadable", "stage": "delivery-state-read"}
             day, status = observe(delivery, config, stamp)
             try:
                 state = read_json(state_path)
             except FileNotFoundError:
                 state = {}
+            except (ValueError, OSError):
+                tz = ZoneInfo(config["timezone"])
+                day = datetime.fromtimestamp(stamp, tz).date().isoformat()
+                status = "unreadable"
+                delivery = {"report_day": day, "status": "unreadable", "stage": "state-read"}
+                state = {}
             if state.get("report_day") != day:
                 state = {"report_day": day, "failure_notified": False, "recovery_notified": False}
             notified = False
-            if status in {"failed", "unknown", "overdue", "unreadable"} and not state.get("failure_notified"):
-                reasons = {"failed": "生成、校验或发送失败，尚未确认两版日报均已送达。",
-                           "unknown": "发送结果无法确认，不能盲目重发，请检查投递回执。",
-                           "overdue": f"已超过计划开始时间 {config['overdue_minutes']} 分钟，尚未确认两版日报均已送达；任务可能仍在运行。",
-                           "unreadable": "无法读取日报投递状态，请检查调度及状态文件。"}
-                body = f"{day} 日报：{reasons[status]} 此监控不修改回执、不补发报告。"
-                notified = notifier(config, "微信日报未确认送达", body, config["fail_level"])
-                if notified:
-                    state.update(failure_notified=True, failure_sent_at=stamp)
+            if status in {"failed", "unknown", "overdue", "unreadable"}:
+                context = {"text": _diagnostic(delivery, status, day), "status": status, "report_day": day}
+                if state.get("failure_notified"):
+                    if not isinstance(state.get("failure_context"), dict):
+                        state["failure_context"] = context
+                else:
+                    body = context["text"] + " 此监控不修改回执、不补发报告。"
+                    notified = notifier(config, "微信日报未确认送达", body, config["fail_level"])
+                    if notified:
+                        state.update(failure_notified=True, failure_sent_at=stamp, failure_context=context)
             elif status == "sent" and state.get("failure_notified") and not state.get("recovery_notified"):
-                body = f"{day} 简报与回顾均已记录为发送成功。"
+                context = state.get("failure_context")
+                if not isinstance(context, dict):
+                    context = {"text": _diagnostic({}, "unknown", day), "status": "unknown", "report_day": day}
+                    state["failure_context"] = context
+                body = f"{day} 日报已恢复，两版发送状态已确认；原故障：{context['text']}"
                 notified = notifier(config, "微信日报投递已恢复", body, config["recovery_level"])
                 if notified:
                     state.update(recovery_notified=True, recovery_sent_at=stamp)

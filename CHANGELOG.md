@@ -1,5 +1,21 @@
 # Changelog
 
+## 1.2.0
+
+- Rank QQ speakers by accumulated original-text tokens using pinned offline `tiktoken` data; include literal captions, exclude generated media/OCR/AI/web context, and omit tokenizer details from reports.
+- Refresh QQ CDN `rkey` only from the verified account's group ticket after a CDN 400, preserving resource identity, original-image handling, cache and prepared-delivery receipts; reject only structured summary-provider 400 responses permanently.
+- Add verified literal speaker quotes and a ranked activity/token section to the end of brief reports. Brief and review choose source-grounded quotes independently; empty candidates stay empty, and visible quotes participate in the Han-character count.
+- Use the platform-neutral project name **WeChat Digest** and repository `rmqg/wechat-digest`; update clone instructions and repository links.
+- Check configured desktop availability before launching report workers; treat absent or ambiguous worker receipts as unknown, never as retryable pre-submit failures.
+- Let the live Weixin window start at any fully visible screen origin while preserving calibration reference, exact template size, dialog guards and stable-instance checks; verify the target header before submission.
+- Include sanitized source/stage and report-day/edition context in delivery Bark notices, retaining failure context for deduplicated recovery without exposing raw errors or secrets.
+- Drop stale active edition errors only after validated success receipts, including terminal replays, while retaining historical logs and forbidding regeneration or duplicate submission.
+- Keep historical token counts and confirmed PNG fingerprints unchanged; publish only synthetic examples, not production accounts, conversations, reports or operational history.
+
+## Unreleased
+
+- No unreleased changes.
+
 ## 1.1.1
 
 - Persist each QQ task's prepared report paths and PNG SHA-256 fingerprints before sending. Resume only unsent editions from those fixed artifacts; late history sync never regenerates or overwrites a confirmed edition.
@@ -19,9 +35,6 @@
 - Add OCR-summary and provider-fallback support, pin `websockets==16.0`, and provide an explicitly selected, checksum-verified Linux x86-64/Python 3.12 OCR image layer with an actual OCR CI smoke check.
 - Retain original third-party notices; publish only synthetic examples, not production accounts, passwords, raw conversations, browser sessions or private operational history.
 
-## Unreleased
-
-- Use the platform-neutral project name **WeChat Digest** and repository `rmqg/wechat-digest`; update clone instructions and repository links.
 
 ## 1.0.0
 

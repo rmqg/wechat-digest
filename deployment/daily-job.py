@@ -198,6 +198,7 @@ def run_tick(now: datetime, *, force: bool = False, prepare_only: bool = False) 
                     raise ValueError(f"invalid persisted {edition} receipt")
                 item.update(status="sent", png_sha256=receipt["png_sha256"], server_id=str(receipt["server_id"]),
                             sent_at=receipt["sent_at"], confirmation=receipt.get("confirmation"))
+                item.pop("error", None)
         for edition in ("brief", "review"):
             item = editions.get(edition)
             if isinstance(item, dict) and item.get("status") in {"unknown", "sending"} and not editions_dir[edition].exists():
@@ -317,6 +318,7 @@ def run_tick(now: datetime, *, force: bool = False, prepare_only: bool = False) 
                 raise ValueError(f"invalid persisted {edition} receipt")
             item.update(status="sent", png_sha256=receipt["png_sha256"], server_id=str(receipt["server_id"]),
                         sent_at=receipt["sent_at"], confirmation=receipt.get("confirmation"))
+            item.pop("error", None)
             current.update(status='sent' if all(editions[key].get('status') == 'sent' for key in ('brief', 'review')) else 'prepared', updated_at=int(time.time()))
             write_state(current)
         elif item.get("status") == "sent":
@@ -366,6 +368,7 @@ def run_tick(now: datetime, *, force: bool = False, prepare_only: bool = False) 
             os.chmod(temporary, 0o600)
             temporary.replace(receipt_path)
             item.update(status="sent", server_id=receipt["server_id"], sent_at=sent_at, confirmation=delivered)
+            item.pop("error", None)
             current.update(status='sent' if all(editions[key].get('status') == 'sent' for key in ('brief', 'review')) else 'prepared', updated_at=int(time.time()))
             current.pop("error", None)
             write_state(current)

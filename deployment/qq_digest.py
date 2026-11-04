@@ -19,6 +19,9 @@ import urllib.error
 import uuid
 import urllib.parse
 import urllib.request
+import re
+import stat
+import time
 
 ROOT = Path(__file__).resolve().parents[1]
 DEPLOYMENT = Path(__file__).resolve().parent
@@ -117,25 +120,42 @@ class _NoRedirect(urllib.request.HTTPRedirectHandler):
         return None
 
 
-def _fetch_image(url: str, *, avatar: bool = False) -> bytes:
+def _replace_image_rkey(url: str, group_rkey: str) -> str | None:
+    if not isinstance(group_rkey, str) or not group_rkey.startswith('&rkey='):
+        return None
+    value = group_rkey[len('&rkey='):]
+    if not value or any(char in value for char in '&?#\r\n') or any(char.isspace() for char in value):
+        return None
+    parsed = urllib.parse.urlsplit(url)
+    fields = parsed.query.split('&')
+    positions = [index for index, field in enumerate(fields) if field.partition('=')[0] == 'rkey']
+    if len(positions) != 1:
+        return None
+    index = positions[0]
+    key, separator, _old_value = fields[index].partition('=')
+    if not separator:
+        return None
+    fields[index] = key + '=' + value
+    return urllib.parse.urlunsplit((parsed.scheme, parsed.netloc, parsed.path,
+                                    '&'.join(fields), parsed.fragment))
+
+
+def _fetch_image_once(url: str, *, avatar: bool = False) -> bytes:
     _check_url(url, avatar=avatar)
     opener = urllib.request.build_opener(urllib.request.ProxyHandler({}), _SafeHTTPSHandler(), _NoRedirect())
     request = urllib.request.Request(url, headers={'User-Agent': 'QQDigest/1.0', 'Accept': 'image/*'})
-    try:
-        with opener.open(request, timeout=30) as response:
-            if response.status != 200:
-                raise ValueError(f'image server returned HTTP {response.status}')
-            chunks, total = [], 0
-            while True:
-                chunk = response.read(min(1024 * 1024, 32 * 1024 * 1024 + 1 - total))
-                if not chunk:
-                    break
-                chunks.append(chunk)
-                total += len(chunk)
-                if total > 32 * 1024 * 1024:
-                    raise ValueError('image exceeds 32 MiB')
-    except urllib.error.HTTPError as exc:
-        raise ValueError(f'image fetch failed with HTTP {exc.code}') from exc
+    with opener.open(request, timeout=30) as response:
+        if response.status != 200:
+            raise ValueError(f'image server returned HTTP {response.status}')
+        chunks, total = [], 0
+        while True:
+            chunk = response.read(min(1024 * 1024, 32 * 1024 * 1024 + 1 - total))
+            if not chunk:
+                break
+            chunks.append(chunk)
+            total += len(chunk)
+            if total > 32 * 1024 * 1024:
+                raise ValueError('image exceeds 32 MiB')
     data = b''.join(chunks)
     if not data:
         raise ValueError('image response is empty')
@@ -148,6 +168,40 @@ def _fetch_image(url: str, *, avatar: bool = False) -> bytes:
     except Exception as exc:
         raise ValueError('image response is not a complete decodable image') from exc
     return data
+
+
+def _fetch_image(url: str, *, avatar: bool = False, group_rkey: str | None = None) -> bytes:
+    try:
+        return _fetch_image_once(url, avatar=avatar)
+    except urllib.error.HTTPError as exc:
+        if exc.code == 400 and not avatar and group_rkey:
+            refreshed = _replace_image_rkey(url, group_rkey)
+            if refreshed:
+                try:
+                    return _fetch_image_once(refreshed, avatar=False)
+                except urllib.error.HTTPError as retry_error:
+                    raise ValueError(f'image fetch failed after group rkey refresh with HTTP {retry_error.code}') from retry_error
+        raise ValueError(f'image fetch failed with HTTP {exc.code}') from exc
+
+
+def _load_group_rkey_file(path: Path | None, runtime: Path, group_id: int) -> str | None:
+    if path is None:
+        return None
+    path = Path(path)
+    if path.is_symlink() or not path.is_file():
+        raise ValueError('group rkey file must be a regular private file')
+    root, resolved = runtime.resolve(), path.resolve(strict=True)
+    if not resolved.is_relative_to(root) or stat.S_IMODE(resolved.stat().st_mode) != 0o600:
+        raise ValueError('group rkey file must stay under runtime and use mode 0600')
+    record = json.loads(resolved.read_text(encoding='utf-8'))
+    if (not isinstance(record, dict) or record.get('group_id') != group_id
+            or record.get('type') != 'group' or not isinstance(record.get('rkey'), str)
+            or not record['rkey'].startswith('&rkey=')):
+        raise ValueError('group rkey file does not match the configured group')
+    token = record['rkey'][len('&rkey='):]
+    if not token or any(char in token for char in '&?#\r\n') or any(char.isspace() for char in token):
+        raise ValueError('group rkey file contains an invalid ticket')
+    return record['rkey']
 
 
 def _segment_url(item: dict) -> str | None:
@@ -186,7 +240,14 @@ def _image_info(data: bytes) -> tuple[str, list[int]]:
         return ext, list(image.size)
 
 
-def _prepare_images(messages: list[dict], runtime: Path, primary: dict, fallback: dict | None) -> tuple[dict, dict]:
+class QQImageFetchError(RuntimeError):
+    def __init__(self, message_uid: str):
+        super().__init__('QQ image fetch failed')
+        self.message_uid = message_uid
+
+
+def _prepare_images(messages: list[dict], runtime: Path, primary: dict, fallback: dict | None,
+                    group_rkey: str | None = None) -> tuple[dict, dict]:
     manifest, image_to_message = [], {}
     cache_dir = runtime / 'qq-digest' / 'images'
     index_path = cache_dir / 'descriptors.json'
@@ -221,7 +282,10 @@ def _prepare_images(messages: list[dict], runtime: Path, primary: dict, fallback
                         except Exception:
                             data = None
             if data is None:
-                data = _fetch_image(url)
+                try:
+                    data = _fetch_image(url, group_rkey=group_rkey)
+                except Exception as exc:
+                    raise QQImageFetchError(message['message_uid']) from exc
                 ext, dimensions = _image_info(data)
                 sha = hashlib.sha256(data).hexdigest()
                 cache_path = cache_dir / f'{sha}.{ext}'
@@ -329,7 +393,7 @@ def _build_report(messages: list[dict], snapshot: dict, group_id: int, start: in
         'active_rank': [], 'leaders': {'talk': {'name': '--', 'count': 0}, 'media': {'name': '--', 'count': 0},
             'link': {'name': '--', 'count': 0}, 'peak': {'name': '--', 'count': 0}},
     }
-    digest.enrich_report(report, messages, start, end, avatar)
+    digest.enrich_report(report, messages, start, end, avatar, text_is_original=True)
     report['stats']['images'] = counts.get('image', 0)
     report['media_understanding'] = {'images': {'total': counts.get('image', 0), 'understood': 0}, 'voice': 'not analyzed', 'video': 'not analyzed'}
     return report
@@ -469,12 +533,118 @@ def _output_stem(group_id, start, end, request_id=None):
     return f'qq-{group_id}-{start}-{end}-{request_id}'
 
 
+class PermanentProviderRequestError(RuntimeError):
+    def __init__(self, stage: str, status: int, details: dict[str, str]):
+        super().__init__(f'model provider returned HTTP {status} during {stage}')
+        self.stage, self.status, self.details = stage, status, details
+
+
+def _safe_provider_error(value: object, config_path: Path, group_id: int) -> dict[str, str]:
+    if isinstance(value, str):
+        value = {'message': value}
+    if not isinstance(value, dict):
+        return {}
+    config = _load_config(config_path)
+    secrets = [provider.get('api_key') for provider in digest.model_providers(config)
+               if isinstance(provider.get('api_key'), str) and provider.get('api_key')]
+
+    def safe_text(item: object, limit: int) -> str | None:
+        if not isinstance(item, (str, int)) or isinstance(item, bool):
+            return None
+        text = str(item)
+        for secret in secrets:
+            text = text.replace(secret, '[REDACTED]')
+        text = re.sub(r'https?://[^\s\"\'<>]+', '[URL]', text, flags=re.I)
+        text = re.sub(r'(?i)\bBearer\s+\S+|\bsk-[A-Za-z0-9_-]{12,}', '[REDACTED]', text)
+        text = re.sub(r'(?i)(ticket|auth[_-]?key|sign|token|api[_-]?key)([\"\']?\s*[:=]\s*[\"\']?)[^\"\'\s,;}]+', r'\1=[REDACTED]', text)
+        text = re.sub(r'(?i)(authorization|cookie|set-cookie)\s*[:=]\s*[^\r\n]+', r'\1=[REDACTED]', text)
+        text = re.sub(rf'\b{re.escape(str(group_id))}\b', '[RECEIVER]', text)
+        text = re.sub(r'\b[\w.+-]+@[\w.-]+\.[A-Za-z]{2,}\b', '[EMAIL]', text)
+        text = re.sub(r'\b\d{5,}\b', '[ID]', text)
+        text = re.sub(r'([\"\']).{24,}?\1', '[REDACTED]', text)
+        text = ''.join(ch if ch.isprintable() else ' ' for ch in text)
+        text = re.sub(r'\s+', ' ', text).strip()
+        return text[:limit] or None
+
+    return {field: text for field, limit in (('code', 80), ('type', 80), ('param', 80), ('message', 512))
+            if (text := safe_text(value.get(field), limit))}
+
+
+def _latest_provider_error(runtime: Path, started_ns: int, config_path: Path, group_id: int) -> dict[str, str]:
+    directory = runtime / 'qq-digest' / 'summary-diagnostics'
+    if not directory.is_dir() or directory.is_symlink():
+        return {}
+    candidates = []
+    for path in directory.glob('summary-*.json'):
+        try:
+            stamp = int(path.stem.removeprefix('summary-'))
+            if stamp > started_ns and path.is_file() and not path.is_symlink():
+                candidates.append((stamp, path))
+        except ValueError:
+            continue
+    for _stamp, path in sorted(candidates, reverse=True):
+        try:
+            diagnostic = json.loads(path.read_text(encoding='utf-8'))
+            response = diagnostic.get('response') if isinstance(diagnostic, dict) else None
+            body = response.get('body') if isinstance(response, dict) and diagnostic.get('reason') == 'http_400' else None
+            envelope = json.loads(body) if isinstance(body, str) else None
+            error = envelope.get('error') if isinstance(envelope, dict) else None
+            safe = _safe_provider_error(error, config_path, group_id)
+            if safe:
+                return safe
+        except (OSError, UnicodeError, ValueError, TypeError, KeyError):
+            continue
+    return {}
+
+
+class QQDigestStageError(RuntimeError):
+    def __init__(self, stage: str, source: str, error_type: str, origin: str,
+                 http_status: int | None, message_uid: str | None = None):
+        super().__init__(f'QQ digest failed during {stage}')
+        self.stage, self.source, self.error_type = stage, source, error_type
+        self.origin, self.http_status, self.message_uid = origin, http_status, message_uid
+
+
+def _stage_call(stage: str, function, *args, **kwargs):
+    import traceback
+    try:
+        return function(*args, **kwargs)
+    except (PermanentProviderRequestError, QQDigestStageError):
+        raise
+    except Exception as exc:
+        source_exc = exc.__cause__ if isinstance(exc, QQImageFetchError) and exc.__cause__ else exc
+        frames = traceback.extract_tb(source_exc.__traceback__)
+        frame = frames[-1] if frames else None
+        source = f'{Path(frame.filename).name}:{frame.name}:{frame.lineno}' if frame else 'unknown'
+        root = source_exc
+        while root.__cause__ is not None:
+            root = root.__cause__
+        status = getattr(root, 'code', None)
+        uid = exc.message_uid if isinstance(exc, QQImageFetchError) else None
+        origin = 'provider' if stage.startswith('summary:') else 'qq_digest'
+        raise QQDigestStageError(stage, source, type(source_exc).__name__, origin,
+                                 status if type(status) is int else None, uid) from exc
+
+
+def _summary_for_edition(config_path: Path, messages: list[dict], runtime: Path,
+                         edition: str, group_id: int) -> dict:
+    started_ns = time.time_ns()
+    try:
+        return digest._summary_with_cache(config_path, messages, runtime / 'qq-digest', edition=edition)
+    except RuntimeError as exc:
+        if str(exc) == 'AI request failed with HTTP 400':
+            details = _latest_provider_error(runtime, started_ns, config_path, group_id)
+            raise PermanentProviderRequestError(f'summary:{edition}', 400, details) from exc
+        raise
+
+
 def _parse_args(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--sources-json', type=Path, required=True)
     parser.add_argument('--model-config', type=Path, required=True)
     parser.add_argument('--fallback-config', type=Path)
     parser.add_argument('--runtime-dir', type=Path, required=True)
+    parser.add_argument('--group-rkey-file', type=Path)
     parser.add_argument('--group-id', type=int, required=True)
     parser.add_argument("--request-id")
     parser.add_argument('--output-dir', type=Path, required=True)
@@ -528,7 +698,9 @@ def run(args) -> dict:
     os.chmod(output, 0o700)
     primary = _load_config(args.model_config)
     fallback = _load_config(args.fallback_config) if args.fallback_config else None
-    image_context, image_counts = _prepare_images(normalized, runtime, primary, fallback)
+    group_rkey = _load_group_rkey_file(args.group_rkey_file, runtime, args.group_id)
+    image_context, image_counts = _stage_call('image_preparation', _prepare_images, normalized, runtime,
+                                              primary, fallback, group_rkey)
     for message in normalized:
         entry = image_context.get(message['message_uid'])
         if entry:
@@ -538,27 +710,27 @@ def run(args) -> dict:
                 'model': entry['result'].get('model', ''), 'source_quality': 'original'}
         else:
             message.pop('image_understanding', None)
-    web_context = _web_context(normalized, runtime, primary)
+    web_context = _stage_call('web_context', _web_context, normalized, runtime, primary)
     auxiliary = {}
     for source in (image_context, web_context):
         for uid, value in source.items():
             auxiliary.setdefault(uid, {}).update(value)
     for message in normalized:
         message['auxiliary_context'] = auxiliary.get(message['message_uid'], {})
-    summaries = {edition: digest._summary_with_cache(args.model_config.resolve(), normalized, runtime / 'qq-digest', edition=edition)
+    summaries = {edition: _stage_call(f'summary:{edition}', _summary_for_edition,
+                                      args.model_config.resolve(), normalized, runtime, edition, args.group_id)
                  for edition in ('brief', 'review')}
-    avatars = _group_avatar(runtime, normalized, args.group_id)
+    avatars = _stage_call('avatars', _group_avatar, runtime, normalized, args.group_id)
     paths, reports = {}, {}
     base = _output_stem(args.group_id, args.start, args.end, getattr(args, "request_id", None))
     for edition in ('brief', 'review'):
-        report = _build_report(normalized, snapshot, args.group_id, args.start, args.end, summaries[edition], edition, avatars)
+        report = _stage_call(f'report:{edition}', _build_report, normalized, snapshot, args.group_id,
+                             args.start, args.end, summaries[edition], edition, avatars)
         if image_counts:
             report['media_understanding']['images'].update(image_counts)
         stem = f'{base}-{edition}'
         html_path, json_path, png_path = output / f'{stem}.html', output / f'{stem}.json', output / f'{stem}.png'
-        html_path.write_text(daily_report.render_html(report), encoding='utf-8')
-        json_path.write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding='utf-8')
-        daily_report.render_png_pillow(report, png_path)
+        _stage_call(f'render:{edition}', _render_edition, report, html_path, json_path, png_path)
         paths[edition] = {'html': str(html_path), 'json': str(json_path), 'png': str(png_path)}
         reports[edition] = report
     sources_path = output / f'{base}-sources.json'
@@ -567,19 +739,37 @@ def run(args) -> dict:
         'messages': [{key: value for key, value in message.items() if key != 'auxiliary_context'}
                      for message in _safe_public_snapshot({'group_id': args.group_id,
                          'group_name': snapshot['group_name'], 'messages': normalized})['messages']]})
-    attach_source_assets([paths[edition]['json'] for edition in ('brief', 'review')], sources_path, runtime)
+    _stage_call('source_assets', attach_source_assets,
+                [paths[edition]['json'] for edition in ('brief', 'review')], sources_path, runtime)
     return {'files': {'editions': paths, 'sources': str(sources_path)},
             'counts': {'messages': len(normalized), 'images': image_counts.get('total', 0),
                        'members': reports['brief']['stats']['members']}}
 
+
+def _render_edition(report: dict, html_path: Path, json_path: Path, png_path: Path) -> None:
+    html_path.write_text(daily_report.render_html(report), encoding='utf-8')
+    json_path.write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding='utf-8')
+    daily_report.render_png_pillow(report, png_path)
 
 def main(argv=None) -> int:
     try:
         result = run(_parse_args(argv))
         print(json.dumps(result, ensure_ascii=False))
         return 0
+    except PermanentProviderRequestError as exc:
+        print(json.dumps({'error': 'model provider rejected the generation request',
+                          'error_type': type(exc).__name__, 'stage': exc.stage,
+                          'origin': 'model_provider', 'http_status': exc.status,
+                          'source': 'deployment/qq_digest.py:_summary_for_edition',
+                          'provider_error': exc.details}, ensure_ascii=False), file=sys.stderr)
+        return 1
+    except QQDigestStageError as exc:
+        print(json.dumps({'error': 'QQ digest stage failed', 'error_type': exc.error_type,
+                          'stage': exc.stage, 'origin': exc.origin, 'http_status': exc.http_status,
+                          'source': exc.source, 'message_uid': exc.message_uid}, ensure_ascii=False), file=sys.stderr)
+        return 1
     except Exception as exc:
-        print(json.dumps({'error': str(exc)}, ensure_ascii=False), file=sys.stderr)
+        print(json.dumps({'error': str(exc), 'error_type': type(exc).__name__}, ensure_ascii=False), file=sys.stderr)
         return 1
 
 

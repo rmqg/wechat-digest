@@ -6,6 +6,7 @@ import hashlib
 import sqlite3
 import tempfile
 from unittest.mock import patch
+from report_metrics import body_token_count
 
 MODULE_PATH = Path(__file__).with_name("digest.py")
 spec = importlib.util.spec_from_file_location("digest", MODULE_PATH)
@@ -148,6 +149,18 @@ class DigestConsumerRiskTests(unittest.TestCase):
         path = Path(root) / "model.json"
         path.write_text(json.dumps({"base_url": "https://model.invalid/v1", "model": "test", "api_key": "test"}))
         return path
+
+    def test_brief_quote_selection_backfills_exact_original_text(self):
+        messages = self._summary_messages(1)
+        original = '  Measure what matters, not what is merely easy to count.  '
+        messages[0]['text'] = original
+        raw = {'one_line': '简报', 'topics': [{'title': '测量的选择', 'summary': '测量应围绕重要目标。',
+               'details': [], 'message_ids': [messages[0]['reference']]}], 'quotes': [0]}
+        with tempfile.TemporaryDirectory() as root, patch.object(digest, '_structured_request', return_value=raw):
+            result = digest._summary_with_cache(self._config_file(root), messages, Path(root), edition='brief')
+        self.assertEqual(result['quotes'][0]['message_id'], messages[0]['message_uid'])
+        self.assertEqual(result['quotes'][0]['speaker'], messages[0]['author'])
+        self.assertEqual(result['quotes'][0]['text'], original)
 
     def test_full_summary_is_generated_once_and_cached_without_truncating_topics(self):
         messages = self._summary_messages()
@@ -296,15 +309,49 @@ class DigestConsumerRiskTests(unittest.TestCase):
         self.assertEqual(report["rhythm_bucket_seconds"], 600)
         self.assertEqual(sum(b["count"] for b in report["rhythm_buckets"]), 2)
 
-    def test_active_rank_keeps_only_twenty_highest_message_counts(self):
-        messages = [{"message_uid": f"{person}-{number}", "reference": f"{person}-{number}", "timestamp": 100,
-                     "author": f"Person {person}", "author_id": f"user-{person:02d}", "text": "message", "type": "text"}
-                    for person in range(1, 24) for number in range(person)]
+    def test_active_rank_sums_literal_body_tokens_without_changing_message_totals(self):
+        from report_metrics import body_token_count
+        messages = [
+            {"message_uid": "long", "reference": "M1", "timestamp": 100, "author": "Same", "author_id": "z-long", "text": "中英🙂 " * 80, "type": "text", "auxiliary_context": {"ocr": "should not count"}},
+            *[{"message_uid": f"short-{i}", "reference": f"S{i}", "timestamp": 101 + i, "author": "Same", "author_id": "a-short", "text": "x", "type": "text"} for i in range(40)],
+            {"message_uid": "special", "reference": "M2", "timestamp": 200, "author": "Other", "author_id": "b-special", "text": "literal <|endoftext|>", "type": "text"},
+            {"message_uid": "image", "reference": "M3", "timestamp": 201, "author": "Other", "author_id": "b-special", "text": "[图片]", "type": "image", "image_understanding": "not counted"},
+            {"message_uid": "image-caption", "reference": "M7", "timestamp": 205, "author": "Caption", "author_id": "caption", "text": "图注：花园里的香草", "type": "image"},
+            {"message_uid": "literal-marker", "reference": "M8", "timestamp": 206, "author": "Literal", "author_id": "literal", "text": "用户文字中的[图片]应保留", "type": "text"},
+            {"message_uid": "tie-z", "reference": "M4", "timestamp": 202, "author": "Same", "author_id": "tie-z", "text": "equal", "type": "text"},
+            {"message_uid": "tie-a", "reference": "M5", "timestamp": 203, "author": "Same", "author_id": "tie-a", "text": "equal", "type": "text"},
+            {"message_uid": "link", "reference": "M6", "timestamp": 204, "author": "Linker", "author_id": "linker", "text": "https://example.org/path", "type": "link_or_file"}
+        ]
         report = {"stats": {}, "topics": [], "quotes": []}
         digest.enrich_report(report, messages, 0, 3600, {})
-        self.assertEqual([p["username"] for p in report["active_rank"]], [f"user-{i:02d}" for i in range(23, 3, -1)])
-        self.assertEqual([p["count"] for p in report["active_rank"]], list(range(23, 3, -1)))
-        self.assertEqual(report["stats"]["members"], 23)
+        self.assertEqual(report["leaders"]["talk"]["username"], "z-long")
+        self.assertEqual(report["leaders"]["talk"]["tokens"], report["active_rank"][0]["tokens"])
+        self.assertEqual(report["active_rank"][0]["username"], "z-long")
+        self.assertEqual(report["active_rank"][0]["tokens"], body_token_count("中英🙂 " * 80))
+        self.assertEqual(report["active_rank"][1]["username"], "a-short")
+        self.assertEqual(report["stats"]["messages"], len(messages))
+        special = next(person for person in report["participants"] if person["username"] == "b-special")
+        self.assertEqual(special["tokens"], body_token_count("literal <|endoftext|>"))
+        linker = next(person for person in report["participants"] if person["username"] == "linker")
+        self.assertEqual(linker["tokens"], body_token_count("https://example.org/path"))
+        caption = next(person for person in report["participants"] if person["username"] == "caption")
+        self.assertEqual(caption["tokens"], body_token_count("图注：花园里的香草"))
+        literal = next(person for person in report["participants"] if person["username"] == "literal")
+        self.assertEqual(literal["tokens"], body_token_count("用户文字中的[图片]应保留"))
+        tied = [person["username"] for person in report["active_rank"] if person["tokens"] == body_token_count("equal")]
+        self.assertEqual(tied, ["tie-a", "tie-z"])
+        self.assertEqual(report["stats"]["members"], 8)
+
+
+    def test_original_media_segment_text_preserves_placeholder_looking_caption(self):
+        message = {"message_uid": "caption", "reference": "M9", "timestamp": 100,
+                   "author": "Caption", "author_id": "caption", "text": "[图片]", "type": "image"}
+        filtered = {"stats": {}, "topics": [], "quotes": []}
+        digest.enrich_report(filtered, [message], 0, 3600, {})
+        self.assertEqual(filtered["participants"][0]["tokens"], 0)
+        original = {"stats": {}, "topics": [], "quotes": []}
+        digest.enrich_report(original, [message], 0, 3600, {}, text_is_original=True)
+        self.assertEqual(original["participants"][0]["tokens"], body_token_count("[图片]"))
 
     def test_time_window_is_start_inclusive_end_exclusive(self):
         with tempfile.TemporaryDirectory() as root:
