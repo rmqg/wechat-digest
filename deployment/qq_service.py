@@ -26,6 +26,7 @@ sys.path.insert(0, str(DEPLOYMENT))
 import qq_onebot
 import qq_site_access_notice
 from qq_onebot import DeliveryUnknownError, QQClient
+from structured import parse_object
 
 TZ = dt.timezone(dt.timedelta(hours=8))
 MAX_WINDOW = 604800
@@ -199,9 +200,7 @@ def _interpret_natural(text: str, request_id: str, trigger_timestamp: int,
         choice = raw["choices"][0]
         if choice.get("finish_reason") in ("length", "content_filter") or choice["message"].get("refusal"):
             raise ValueError("incomplete intent response")
-        parsed = json.loads(choice["message"]["content"])
-        if not isinstance(parsed, dict):
-            raise ValueError("intent response is not an object")
+        parsed = parse_object(choice["message"]["content"])
         if parsed.get("accepted") is not True:
             return {"status": "ignored", "reason": "not a direct summary request"}
         duration = parsed.get("duration_seconds")
@@ -550,7 +549,7 @@ class QQService:
             try:
                 if duration is not None and _summary_verb(text) and _direct_command(text):
                     result = {"status": "accepted", "duration_seconds": duration}
-                elif _direct_command(text) and duration is None:
+                elif duration is None and re.fullmatch(r"\s*(?:总结|總結|汇总|彙總)\s*", text):
                     result = {"status": "accepted", "duration_seconds": DEFAULT_WINDOW}
                 else:
                     result = self.intent_interpreter(text, row["message_uid"], row["timestamp"], self.model_config)
@@ -882,13 +881,13 @@ class QQService:
         return status
 
     def process_site_access_notices(self, now: int | None = None) -> list[dict[str, Any]]:
-        """Send daily website guidance only after both image receipts are confirmed."""
+        """Send website guidance only after both image receipts are confirmed."""
         if self.site_access_file is None:
             return []
         now = int(self.clock()) if now is None else int(now)
         with self._db_lock, self._connect() as db:
             tasks = [dict(row) for row in db.execute(
-                "SELECT t.* FROM tasks t WHERE t.kind='daily' AND t.status='complete' "
+                "SELECT t.* FROM tasks t WHERE t.kind IN ('daily','request') AND t.status='complete' "
                 "AND EXISTS (SELECT 1 FROM receipts r WHERE r.task_id=t.id AND r.edition='brief' AND r.state='sent') "
                 "AND EXISTS (SELECT 1 FROM receipts r WHERE r.task_id=t.id AND r.edition='review' AND r.state='sent') "
                 "ORDER BY t.end,t.id")]

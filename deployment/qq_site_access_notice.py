@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import datetime as dt
+
 import fcntl
 import hashlib
 import json
@@ -14,7 +16,7 @@ from urllib.parse import quote, urlsplit, urlunsplit
 from site_access_message import build_access_message
 
 _DATE = re.compile(r"\d{4}-\d{2}-\d{2}\Z")
-_TERMINAL = {"sent", "unknown"}
+_TERMINAL = {"sent", "unknown", "cancelled"}
 
 
 def _day(value: Any) -> str | None:
@@ -24,6 +26,18 @@ def _day(value: Any) -> str | None:
         from datetime import date
         return value if date.fromisoformat(value).isoformat() == value else None
     except ValueError:
+        return None
+
+
+def _report_day(task: dict) -> str | None:
+    if task["kind"] == "daily":
+        return _day(task.get("daily_key"))
+    end = task.get("end")
+    if type(end) is not int:
+        return None
+    try:
+        return dt.datetime.fromtimestamp(end, dt.timezone(dt.timedelta(hours=8))).date().isoformat()
+    except (OverflowError, OSError, ValueError):
         return None
 
 
@@ -125,11 +139,14 @@ def read_receipts(state_dir: Path) -> list[dict]:
 def process_notice(task: dict, *, config_path: Path, group_id: int, bot_names: list[str],
                    state_dir: Path, open_verified: Callable, close_client: Callable,
                    now: int) -> dict:
-    """Send one standalone access notice for a completed daily QQ task."""
-    if (not isinstance(task, dict) or task.get("kind") != "daily" or task.get("status") != "complete"
-            or _day(task.get("daily_key")) is None or not isinstance(task.get("id"), str)
+    """Send one standalone access notice for a completed daily or requested summary."""
+    if (not isinstance(task, dict) or task.get("kind") not in ("daily", "request")
+            or task.get("status") != "complete" or not isinstance(task.get("id"), str)
             or not task["id"] or type(group_id) is not int or group_id <= 0
             or isinstance(now, bool) or not isinstance(now, int)):
+        return {"status": "ineligible"}
+    report_day = _report_day(task)
+    if report_day is None:
         return {"status": "ineligible"}
     task_id = task["id"]
     ident = hashlib.sha256(task_id.encode("utf-8")).hexdigest()
@@ -161,15 +178,15 @@ def process_notice(task: dict, *, config_path: Path, group_id: int, bot_names: l
         try:
             config = _valid_config(Path(config_path), group_id, bot_names)
         except Exception as exc:
-            return _failed_before_send(receipt_path, state, task_id, task["daily_key"], group_id,
+            return _failed_before_send(receipt_path, state, task_id, report_day, group_id,
                                        now, exc, "configuration")
         end = task.get("end")
         if isinstance(end, bool) or not isinstance(end, int):
-            return _failed_before_send(receipt_path, state, task_id, task["daily_key"], group_id,
+            return _failed_before_send(receipt_path, state, task_id, report_day, group_id,
                                        now, ValueError(), "task")
         if end < config["enabled_from"]:
             return {"status": "disabled"}
-        body = build_access_message(task["daily_key"], _access_url(config), config["bot_name"])
+        body = build_access_message(report_day, _access_url(config), config["bot_name"])
         digest = hashlib.sha256(body.encode("utf-8")).hexdigest()
         if state.get("text_sha256") not in (None, digest):
             return {"status": "failed"}
@@ -178,16 +195,16 @@ def process_notice(task: dict, *, config_path: Path, group_id: int, bot_names: l
         try:
             client = open_verified()
         except Exception as exc:
-            return _failed_before_send(receipt_path, state, task_id, task["daily_key"], group_id,
+            return _failed_before_send(receipt_path, state, task_id, report_day, group_id,
                                        now, exc, "connection", attempts, retry_count)
         try:
             try:
-                sending = {"task_id": task_id, "report_day": task["daily_key"], "group_id": group_id,
+                sending = {"task_id": task_id, "report_day": report_day, "group_id": group_id,
                            "status": "sending", "attempts": attempts + 1, "retry_count": retry_count,
                            "before_submit": False, "location": "send_text", "text_sha256": digest, "updated_at": now}
                 _atomic_json(receipt_path, sending)
             except Exception as exc:
-                return _failed_before_send(receipt_path, state, task_id, task["daily_key"], group_id,
+                return _failed_before_send(receipt_path, state, task_id, report_day, group_id,
                                            now, exc, "receipt", attempts, retry_count)
             try:
                 message_id = client.send_text(group_id, body)

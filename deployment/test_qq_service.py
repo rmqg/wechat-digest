@@ -57,6 +57,61 @@ class FakeClient:
 
 
 class QQServiceTests(unittest.TestCase):
+    def test_chinese_range_is_interpreted_but_bare_summary_keeps_default(self):
+        service = self.make_service(intent_interpreter=lambda *args: {'status': 'accepted', 'duration_seconds': 10800})
+        ranged = self.message(uid='range-cn', text='总结三小时的聊天记录喵', _at_ids=[self.config['expected_self_id']])
+        bare = self.message(uid='bare-summary', timestamp=999_901, text='总结', _at_ids=[self.config['expected_self_id']])
+        service.save_messages([ranged, bare], intent_state='pending')
+        self.assertEqual(service.process_intents_once(now=self.now), 2)
+        with service._connect() as db:
+            tasks = {row['request_message_uid']: dict(row) for row in db.execute("SELECT * FROM tasks")}
+        self.assertEqual((tasks['range-cn']['start'], tasks['range-cn']['end']), (999_900 - 10800, 999_900))
+        self.assertEqual((tasks['bare-summary']['start'], tasks['bare-summary']['end']), (999_901 - 86400, 999_901))
+
+    def test_unparsed_range_failure_does_not_create_a_default_window(self):
+        def unavailable(*args):
+            raise OSError('synthetic intent transport failure')
+        service = self.make_service(intent_interpreter=unavailable)
+        message = self.message(text='总结最近三小时', _at_ids=[self.config['expected_self_id']])
+        service.save_messages([message], intent_state='pending')
+        self.assertEqual(service.process_intents_once(now=self.now), 0)
+        self.assertEqual(service.status()['tasks'], [])
+        with service._connect() as db:
+            row = db.execute('SELECT intent_state,intent_attempts FROM messages WHERE message_uid=?', (message['message_uid'],)).fetchone()
+        self.assertEqual(tuple(row), ('pending', 1))
+
+    def test_natural_intent_accepts_complete_fenced_json_and_rejects_truncation(self):
+        import io
+        from unittest.mock import patch
+        config = self.root / 'intent-model.json'
+        config.write_text(json.dumps({'base_url': 'https://model.example.invalid', 'model': 'fixture', 'api_key': 'test-only-key'}))
+        content = '```json\n{"accepted":true,"duration_seconds":10800}\n```'
+        complete = json.dumps({'choices': [{'finish_reason': 'stop', 'message': {'content': content}}]}).encode()
+        with patch.object(qq_service.urllib.request, 'urlopen', return_value=io.BytesIO(complete)):
+            result = qq_service._interpret_natural('总结三小时', 'fixture-command', self.now, config)
+        self.assertEqual((result['start'], result['end'], result['duration_seconds']), (self.now - 10800, self.now, 10800))
+        malformed = json.dumps({'choices': [{'finish_reason': 'stop', 'message': {'content': '```json\n{"accepted":true,'}}]}).encode()
+        with patch.object(qq_service.urllib.request, 'urlopen', return_value=io.BytesIO(malformed)):
+            with self.assertRaises(RuntimeError):
+                qq_service._interpret_natural('总结三小时', 'fixture-command', self.now, config)
+
+    def test_completed_requested_summary_is_eligible_for_a_notice(self):
+        access = self.root / 'request-site-access.json'
+        access.write_text(json.dumps({'group_id': self.config['group_id'], 'username': 'synthetic-reader',
+            'password': 'test-only-password', 'url': f"https://reports.example.invalid/qq/{self.config['group_id']}/",
+            'bot_name': self.config['bot_names'][0], 'enabled_from': self.now - 1}))
+        access.chmod(0o600)
+        self.config['site_access_file'] = access
+        service = self.make_service()
+        task_id = service.enqueue_request(self.now, 10800, 'synthetic-trigger')
+        with service._connect() as db:
+            db.execute("UPDATE tasks SET status='complete' WHERE id=?", (task_id,))
+            db.execute("UPDATE receipts SET state='sent',message_id='fixture-'||edition,attempts=1 WHERE task_id=?", (task_id,))
+        self.assertEqual(service.process_site_access_notices()[0]['status'], 'sent')
+        self.assertEqual(service.process_site_access_notices()[0]['status'], 'sent')
+        self.assertEqual(len(self.shared['sent_text']), 1)
+        self.assertEqual(self.shared['sent'], [])
+
     def test_daily_notice_waits_for_both_images_and_survives_reopen(self):
         access = self.root / "site-access.json"
         access.write_text(json.dumps({

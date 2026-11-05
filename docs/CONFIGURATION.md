@@ -13,7 +13,7 @@ bootstrap 初始化/pinning/capture 和 `--list-groups` 不依赖 `group.id/name
 
 报告日期、金句时间、峰值标签，以及 `--start`/`--end` 的无时区 ISO 时间也按项目 `timezone` 解释；显式带偏移的 ISO 时间保留其绝对时间。已生成报告可带自己的 `timezone` 元数据供离线渲染使用；合成样本明确采用 UTC，不依赖运行机器的本地时区。
 
-`images.runtime`、`images.keyscan` 默认 `wechat-digest-runtime:1.2.3`；`images.desktop` 默认 `ghcr.io/nickrunning/wechat-selkies:0.0.12-minimal`。值是本机 image references，需与已安装并运行的镜像对应。runtime/keyscan 必须解析为相同 image ID；desktop 的 ID 要与配置容器的当前 image ID 相同。bootstrap 记录不可变 ID 到 `runtime/image-pins.json`，每次执行校验 config 引用与 pin 一致；不要把标签本身当成内容摘要。示例模板 `examples/project.example.json` 填入这些键，真实群账号标识只存本机，不可发布。
+`images.runtime`、`images.keyscan` 默认 `wechat-digest-runtime:1.2.4`；`images.desktop` 默认 `ghcr.io/nickrunning/wechat-selkies:0.0.12-minimal`。值是本机 image references，需与已安装并运行的镜像对应。runtime/keyscan 必须解析为相同 image ID；desktop 的 ID 要与配置容器的当前 image ID 相同。bootstrap 记录不可变 ID 到 `runtime/image-pins.json`，每次执行校验 config 引用与 pin 一致；不要把标签本身当成内容摘要。示例模板 `examples/project.example.json` 填入这些键，真实群账号标识只存本机，不可发布。
 `runtime/digest/delivery-state.json` 与 on-demand job/receipt、`runtime/digest/sent-receipts/*.json`、`on-demand-receipts/*.json` 是程序拥有的 durable state，不是待手改的设置；记录 edition、window、状态、PNG SHA256/服务端 receipt，用于禁止重复发送。备份/恢复必须原子一致，缺 receipt、发送中断或结果不确定时状态机将进入 `unknown` 并拒绝自动重发。不要删/重置来清理故障。
 
 下面只列出仓库代码实际读取的配置字段；runtime 状态、缓存、收据、报告 JSON 是程序生成数据，不是手工配置。无明确默认值者必须由运维者创建；不要靠放宽校验修复缺项。除非字段明确标为可选，缺少必需项、类型不对或不在允许范围时都应先修配置。所有含 token、密码、API key、个人账号/群标识或登录会话的文件均应以 `0600` 或更严格权限存储，禁止提交。

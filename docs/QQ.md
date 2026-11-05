@@ -27,7 +27,7 @@ install -m 600 /dev/null /srv/qq-digest/runtime/onebot.token
 python3 scripts/install-ocr.py --target /srv/qq-digest/ocr-deps --wheel-dir /srv/qq-digest/ocr-wheels
 # 运行 worker 时将 /srv/qq-digest/ocr-deps 加入 PYTHONPATH；已有 wheel 可用 --offline 安装。
 # 或构建包含该 OCR 层的 Linux x86-64 工具镜像：
-docker build --build-arg WITH_OCR=1 -t wechat-digest-runtime:1.2.3 .
+docker build --build-arg WITH_OCR=1 -t wechat-digest-runtime:1.2.4 .
 ```
 
 相对路径以 JSON 配置文件所在目录为基准。服务配置至少应明确 `onebot_url`、`onebot_token_file`、`group_id`、`group_name`、`expected_self_id`、`bot_names`、`runtime_dir`、`reports_dir`、`model_config`、`enabled_from` 和 `daily_hour`。`enabled_from` 是 Unix 秒时间戳，防止启用前的历史消息被当作新触发。模板中的群、账号、密码、URL 和 token 路径均为虚构/占位，必须替换；不得将真实 token 或 API key 放入仓库。
@@ -50,7 +50,8 @@ QQ worker 使用已鉴权的 OneBot v11 WebSocket API；网站服务才使用 HT
 
 - 日报固定 UTC+8、每天 05:00 计划生成；`daily_hour` 可配置。日报为前一天该时刻至当天该时刻的 24 小时窗口；部署启用前的日程不会立即补发。
 - 真实 OneBot `at` 指向本机器人，或文本同时含 `@` 与任一配置的 bot 名字，均进入意图识别；不要求位置、空格或先匹配“总结”关键词。机器人自己的消息不触发也不纳入下一轮总结；普通提及、引用或转述是否属于直接总结请求由后续判定，不直接当成执行授权。
-- 默认自定窗口最近 24 小时。请求可指定时间长度，最大 7 天（168 小时）；超限或无效请求被拒绝，不会静默缩短成 7 天。超过窗口上限需缩小窗口后重新请求。
+- 只有不带时长的裸“总结/汇总”使用 24 小时默认。显式时长经自然语言时长解析器解释并受 7 天（168 小时）上限约束；无法解释、超限或无效请求必须拒绝/澄清，不能悄然退回 24 小时。
+- QQ 意图解析接受完整 JSON 或完整 Markdown JSON fence；无效、截断、不完整或被拒绝的结构化结果仍失败关闭，不以默认时长补齐。
 - 触发请求使用持久化任务及逐版发送回执防重。确认送达后绝不自动重发；提交后无法确认的结果按未知状态停止，先核实 QQ 端实际消息再人工处理。取消任务只取消尚未发送的工作；发送中/结果未知不能撤销已提交的消息。
 - 报告为空时不得生成/投递空白摘要；拒绝发送不是成功回执。永久不可重试的请求会终止并需修正输入，暂时性网络/API故障按有限退避恢复。
 - 两版生成后，先持久化任务对应的路径与 PNG SHA-256，再提交发送。续发只读这组固定产物，不重新调用模型、改写源快照或覆盖已确认版本；迟到同步的消息只进入新任务。固定产物缺失、越界或指纹不符时停止并人工核查，不能重新生成冒充原版。旧任务已提交或结果未知但没有固定产物记录时也停止；两版已有确认回执的任务可直接恢复为完成，不重发。
@@ -93,11 +94,11 @@ cp examples/qq-site-access.example.json runtime/qq-site-access.json
 chmod 600 runtime/qq-site-access.json
 ```
 
-填写 `group_id`、`username`、`password`、`url`、`bot_name`、整数 Unix 秒 `enabled_from`。`group_id` 必须与服务配置目标群匹配；`username`/`password` 是该群网站凭据，分别配置，禁止塞入 `url`。`url` 必须是无 user-info、query、fragment 的 HTTPS `/qq/<group_id>/` 入口；通知发送时才由程序将独立的用户名/密码与该入口组合为通知链接，且不得记录或回显生成后的链接。`bot_name` 必须包含在服务 `bot_names` 配置中。服务按日报窗口结束时间与 `enabled_from` 比较；只启用当前日报时，将其设为该窗口结束时间的 Unix 秒，避免更早任务积压补发。文件必须为 `0600` 且服务 worker UID 可读；每个文件仅对应一个群，不得共享到其他群、提交仓库或写入日志。
+填写 `group_id`、`username`、`password`、`url`、`bot_name`、整数 Unix 秒 `enabled_from`。`group_id` 必须与服务配置目标群匹配；`username`/`password` 是该群网站凭据，分别配置，禁止塞入 `url`。`url` 必须是无 user-info、query、fragment 的 HTTPS `/qq/<group_id>/` 入口；通知发送时才由程序将独立的用户名/密码与该入口组合为通知链接，且不得记录或回显生成后的链接。`bot_name` 必须包含在服务 `bot_names` 配置中。服务将 `enabled_from` 与窗口结束时间比较：日报使用日报 `end`，按需通知日期由请求 `end` 按 UTC+8 派生；只启用指定日期时，应将边界设为该目标窗口结束时间，防止更早任务积压补发。文件必须为 `0600` 且服务 worker UID 可读；每个文件仅对应一个群，不得共享到其他群、提交仓库或写入日志。
 
-仅当同一日报任务的简报和回顾都取得已确认的 `sent` 回执，服务才发送一次独立的站点访问/用法说明。说明沿用微信侧现有四行通知格式，包含站点入口及 `@` 默认 24 小时、可指定 3 小时的用法；公开文档不包含真实通知文本、URL 或凭据。站点说明有独立持久化回执，并在 `status` 中通过 `site_access_notices` 投影；它与两张报告图片的回执、文件及 SHA-256 完全分开，不会生成或重发日报图片。
+同一日报任务或按需请求的简报和回顾都取得已确认的 `sent` 回执后，服务才发送一次独立站点访问/用法说明。说明沿用微信侧现有四行通知格式，包含站点入口及 `@` 默认 24 小时、可指定 3 小时的用法；按需任务的通知日期由请求窗口 `end` 按 UTC+8 派生。公开文档不包含真实通知文本、URL 或凭据。站点说明有独立持久化回执，并在 `status` 中通过 `site_access_notices` 投影；它与两张报告图片的回执、文件及 SHA-256 完全分开，不会生成或重发日报图片。
 
-通知已确认 `sent` 后重启不重复发送；提交后状态为 `unknown` 时停止并先核实群内消息，不盲目重试；恢复时仍处于 `sending` 的通知转为 `unknown`。仅能确认尚未提交的失败可按有限退避重试。通知故障不得修改图片的发送状态，不得触发重新生成或重新投递报告。
+通知已确认 `sent` 后重启不重复发送；提交后状态为 `unknown` 时停止并先核实群内消息，不盲目重试；恢复时仍处于 `sending` 的通知转为 `unknown`。`cancelled` 是终态，不会重新调度；仅能确认尚未提交的失败可按有限退避重试。通知故障不得修改图片的发送状态，不得触发重新生成或重新投递报告。
 
 如启用 `deployment/qq_publish.py`，只为指定群设置独立受限 SSH 发布目标；该发布器仅同步该群已核验的简报/回顾和所需哈希图片 assets，最小化必要元数据，不上传 sources 快照、OneBot/model 配置、token 或其他群文件。远端目录仍应通过上述群账户与 socket 隔离提供。
 

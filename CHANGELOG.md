@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.2.4
+
+- Resolve explicit QQ on-demand durations through the natural-language duration parser rather than silently replacing unrecognized duration text with a 24-hour window; only a bare summary request uses the default. Parse complete fenced JSON responses safely while still rejecting truncated/incomplete output.
+- Send the same independent site-access/use notice after both images are confirmed sent for either a daily task or an on-demand request. Derive request notice dates from the request window end; treat `cancelled` as terminal and do not reopen or resend cancelled notices.
+- Synchronize public runtime/template references to 1.2.4. Evidence claims are limited to synthetic flows and read-only checks; no corrected real on-demand report or notice is claimed.
+
+
 ## 1.2.3
 
 - Automatically send the QQ site-access/use notice only after both editions for a daily task have confirmed `sent` receipts. Track notice delivery separately so restarts do not duplicate confirmed notices and unknown submissions are not blindly retried.

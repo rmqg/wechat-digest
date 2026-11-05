@@ -62,7 +62,30 @@ class QQSiteAccessNoticeTests(unittest.TestCase):
         ident = hashlib.sha256(self.task["id"].encode()).hexdigest()
         return self.state_dir / f"{ident}.json"
 
-    def test_only_completed_daily_eligible_task_sends(self):
+    def test_requested_summary_uses_trigger_day_and_its_own_receipt(self):
+        import datetime as dt
+        end = int(dt.datetime(2026, 11, 5, 0, 30, tzinfo=dt.timezone(dt.timedelta(hours=8))).timestamp())
+        self.task = {**self.task, 'id': 'request-task-1', 'kind': 'request', 'daily_key': None, 'end': end}
+        self.assertEqual(self.run_notice()['status'], 'sent')
+        self.assertEqual(self.run_notice()['status'], 'sent')
+        receipt = json.loads(self.receipt_path().read_text())
+        self.assertEqual(receipt['report_day'], '2026-11-05')
+        self.assertEqual(receipt['attempts'], 1)
+        self.assertEqual(len(self.client.calls), 1)
+
+    def test_user_cancelled_notice_never_sends_or_reopens(self):
+        self.task = {**self.task, 'id': 'cancelled-request', 'kind': 'request', 'daily_key': None}
+        self.state_dir.mkdir(mode=0o700)
+        self.receipt_path().write_text(json.dumps({'task_id': self.task['id'], 'status': 'cancelled', 'attempts': 0}))
+        self.config_path.unlink()
+        before = self.receipt_path().read_bytes()
+        self.assertEqual(self.run_notice()['status'], 'cancelled')
+        self.assertEqual(self.run_notice()['status'], 'cancelled')
+        self.assertEqual(self.receipt_path().read_bytes(), before)
+        self.assertEqual(self.client.calls, [])
+        self.assertEqual(self.opens, 0)
+
+    def test_only_supported_completed_tasks_are_eligible(self):
         for changes in ({"status": "pending"}, {"status": "partial_unknown"},
                         {"kind": "on_demand"}, {"daily_key": "2026-02-30"}):
             task = {**self.task, **changes}
