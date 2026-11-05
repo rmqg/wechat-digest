@@ -24,6 +24,7 @@ DEPLOYMENT = Path(__file__).resolve().parent
 sys.path.insert(0, str(DEPLOYMENT))
 
 import qq_onebot
+import qq_site_access_notice
 from qq_onebot import DeliveryUnknownError, QQClient
 
 TZ = dt.timezone(dt.timedelta(hours=8))
@@ -97,6 +98,7 @@ def load_config(path: str | Path) -> dict[str, Any]:
         "model_config": _resolve_path(data["model_config"], base, "model_config"),
         "vision_fallback_config": _resolve_path(data.get("vision_fallback_config"), base,
                                                   "vision_fallback_config", optional=True),
+        "site_access_file": _resolve_path(data.get("site_access_file"), base, "site_access_file", optional=True),
     })
     result["bot_names"] = list(names)
     return result
@@ -241,6 +243,9 @@ class QQService:
         fallback = self.config.get("vision_fallback_config")
         self.fallback_config = Path(fallback) if fallback else None
         self.token_file = Path(self.config["onebot_token_file"])
+        site_access = self.config.get("site_access_file")
+        self.site_access_file = Path(site_access) if site_access else None
+        self.site_access_receipts = self.runtime_dir / "site-access-receipts"
         self.db_path = self.runtime_dir / "qq_service.sqlite3"
         if self.db_path.is_symlink():
             raise ConfigurationError("runtime database must not be a symbolic link")
@@ -876,6 +881,22 @@ class QQService:
             db.commit()
         return status
 
+    def process_site_access_notices(self, now: int | None = None) -> list[dict[str, Any]]:
+        """Send daily website guidance only after both image receipts are confirmed."""
+        if self.site_access_file is None:
+            return []
+        now = int(self.clock()) if now is None else int(now)
+        with self._db_lock, self._connect() as db:
+            tasks = [dict(row) for row in db.execute(
+                "SELECT t.* FROM tasks t WHERE t.kind='daily' AND t.status='complete' "
+                "AND EXISTS (SELECT 1 FROM receipts r WHERE r.task_id=t.id AND r.edition='brief' AND r.state='sent') "
+                "AND EXISTS (SELECT 1 FROM receipts r WHERE r.task_id=t.id AND r.edition='review' AND r.state='sent') "
+                "ORDER BY t.end,t.id")]
+        return [qq_site_access_notice.process_notice(
+            task, config_path=self.site_access_file, group_id=self.group_id, bot_names=self.bot_names,
+            state_dir=self.site_access_receipts, open_verified=self._open_verified,
+            close_client=self._close_client, now=now) for task in tasks]
+
     def process_next_task(self, now: int | None = None) -> str | None:
         task = self._claim_task(now)
         return self.process_task(task, now) if task else None
@@ -911,6 +932,7 @@ class QQService:
             "queue": counts,
             "tasks": [dict(row) for row in tasks],
             "receipts": [dict(row) for row in receipts],
+            "site_access_notices": qq_site_access_notice.read_receipts(self.site_access_receipts),
         }
 
     def serve(self) -> None:
@@ -958,6 +980,10 @@ class QQService:
 
     def _worker_loop(self) -> None:
         while not self._stop.is_set():
+            try:
+                self.process_site_access_notices()
+            except Exception as exc:
+                self._set_health(success=False, error=exc)
             try:
                 result = self.process_next_task()
                 if result is None:

@@ -9,6 +9,7 @@ import subprocess
 import sys
 import time
 from urllib.parse import quote
+from site_access_message import build_access_message
 
 import settings
 
@@ -100,9 +101,7 @@ def process_notice(receipt: dict, *, request_id: str | None = None, config_path:
         return {'status': 'unknown'}
     site_url = config["url"].removeprefix("https://").removesuffix("/")
     access_url = f"https://{quote(config['username'], safe='')}:{quote(config['password'], safe='')}@{site_url}"
-    body = (f"{receipt['report_day']} 总结网站访问信息\n网址：{access_url}\n"
-            f"使用：@{bot_name} 总结（默认最近24小时）\n"
-            f"示例：@{bot_name} 总结最近3h聊天记录（时长可用自然语言指定）")
+    body = build_access_message(receipt['report_day'], access_url, bot_name)
     encoded = body.encode("utf-8")
     digest = hashlib.sha256(encoded).hexdigest()
     if state.get("text_sha256") not in (None, digest):

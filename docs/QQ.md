@@ -27,7 +27,7 @@ install -m 600 /dev/null /srv/qq-digest/runtime/onebot.token
 python3 scripts/install-ocr.py --target /srv/qq-digest/ocr-deps --wheel-dir /srv/qq-digest/ocr-wheels
 # 运行 worker 时将 /srv/qq-digest/ocr-deps 加入 PYTHONPATH；已有 wheel 可用 --offline 安装。
 # 或构建包含该 OCR 层的 Linux x86-64 工具镜像：
-docker build --build-arg WITH_OCR=1 -t wechat-digest-runtime:1.2.2 .
+docker build --build-arg WITH_OCR=1 -t wechat-digest-runtime:1.2.3 .
 ```
 
 相对路径以 JSON 配置文件所在目录为基准。服务配置至少应明确 `onebot_url`、`onebot_token_file`、`group_id`、`group_name`、`expected_self_id`、`bot_names`、`runtime_dir`、`reports_dir`、`model_config`、`enabled_from` 和 `daily_hour`。`enabled_from` 是 Unix 秒时间戳，防止启用前的历史消息被当作新触发。模板中的群、账号、密码、URL 和 token 路径均为虚构/占位，必须替换；不得将真实 token 或 API key 放入仓库。
@@ -64,9 +64,9 @@ worker 仅在需要生成含图片的任务时，先用已验证的 OneBot 登�
 
 ## Web 报告服务与共用入口
 
-QQ 报告站点是 Python 标准库实现，可选监听本机 loopback 或 Unix socket。生产推荐每群一个私有 socket，并由 Docker Caddy 通过仅私有挂载的 `/config` 路径访问；不要将 socket 所在目录、报告目录或 token 挂进公网容器之外的共享数据区。每个 QQ 群使用独立站点用户名/密码及独立报告根目录，密码不能跨群或与 MSC 共用，不能写入仓库、URL、访问日志或工单。
+QQ 报告站点是 Python 标准库实现，可选监听本机 loopback 或 Unix socket。生产推荐每群一个私有 socket，并由 Docker Caddy 通过仅私有挂载的 `/config` 路径访问；不要将 socket 所在目录、报告目录或 token 挂进公网容器之外的共享数据区。每个 QQ 群使用独立站点用户名/密码及独立报告根目录，密码不能跨群或与 MSC 共用，不得进入仓库、普通 URL、日志或工单；通知配置中的 `url` 不含 user-info、query 或 fragment，用户名/密码分别存放在专群私有文件。
 
-独立站点配置模板为 [`examples/qq-site.example.json`](../examples/qq-site.example.json)，其中的群 ID/账户为虚构值，密码 verifier 是必须替换的占位符。为实际群生成密码 verifier 时使用站点程序的 `--hash-password` 输入流程；不要把明文密码写进配置、URL、命令参数或 shell history。每个群创建独立强密码和 scrypt verifier，站点配置设 `0600`。将 `reports_dir` 指到本群专属静态报告目录；`socket_path` 必须位于 Caddy 私有挂载可访问的目录，避免共享 `/config/private` 给无关容器。运行前执行 `python3 deployment/qq_report_site.py --config /private/path/qq-site.json --check-config` 检查配置，再按服务管理器运行 `--serve`。
+独立站点配置模板为 [`examples/qq-site.example.json`](../examples/qq-site.example.json)，其中的群 ID/账户为虚构值，密码 verifier 是必须替换的占位符。为实际群生成密码 verifier 时使用站点程序的 `--hash-password` 输入流程；不要把明文密码放入普通配置、命令参数或 shell history。每个群创建独立强密码和 scrypt verifier，站点配置设 `0600`。将 `reports_dir` 指到本群专属静态报告目录；`socket_path` 必须位于 Caddy 私有挂载可访问的目录，避免共享 `/config/private` 给无关容器。运行前执行 `python3 deployment/qq_report_site.py --config /private/path/qq-site.json --check-config` 检查配置，再按服务管理器运行 `--serve`。
 
 同一群的明文密码需分别生成两种验证器：`qq_report_site.py --hash-password` 生成站点用的 scrypt；Caddy 的 `caddy hash-password` 从标准输入读取密码并生成 bcrypt。二者不能互换。不要使用会把明文放进进程参数的 `--plaintext`，也不要改写现有 MSC 的用户名或哈希。更新后先执行 Caddy `validate` 再平滑 `reload`；只重载本次新建的 QQ 站点进程，不重启共享代理。
 
@@ -83,6 +83,21 @@ handle {
 ```
 
 这是路由顺序示意，不是完整站点配置；沿用现有 TLS、全局认证和群隔离，先用 Caddy `validate` 再按受控流程 reload。QQ 认证器拒绝未授权请求时，401 必须包含 HTML `Content-Type`、正确 `Content-Length` 和保留的 `WWW-Authenticate: Basic ...` challenge；不得把未授权错误变成空文件或绕过认证。Safari 可能复用先前 HTTP Basic 凭据，因此首次访问可出现原生登录框；不能保证 URL user-info 会被每个浏览器自动用于认证。入口只接受对应群的独立凭据，根路径和既有微信用户/路由保持原样。
+
+### 双版完成后的站点访问说明
+
+可选服务配置字段 `site_access_file` 指向本群独立的通知凭据 JSON。纯合成模板见 [`examples/qq-site-access.example.json`](../examples/qq-site-access.example.json)；复制后编辑：
+
+```sh
+cp examples/qq-site-access.example.json runtime/qq-site-access.json
+chmod 600 runtime/qq-site-access.json
+```
+
+填写 `group_id`、`username`、`password`、`url`、`bot_name`、整数 Unix 秒 `enabled_from`。`group_id` 必须与服务配置目标群匹配；`username`/`password` 是该群网站凭据，分别配置，禁止塞入 `url`。`url` 必须是无 user-info、query、fragment 的 HTTPS `/qq/<group_id>/` 入口；通知发送时才由程序将独立的用户名/密码与该入口组合为通知链接，且不得记录或回显生成后的链接。`bot_name` 必须包含在服务 `bot_names` 配置中。服务按日报窗口结束时间与 `enabled_from` 比较；只启用当前日报时，将其设为该窗口结束时间的 Unix 秒，避免更早任务积压补发。文件必须为 `0600` 且服务 worker UID 可读；每个文件仅对应一个群，不得共享到其他群、提交仓库或写入日志。
+
+仅当同一日报任务的简报和回顾都取得已确认的 `sent` 回执，服务才发送一次独立的站点访问/用法说明。说明沿用微信侧现有四行通知格式，包含站点入口及 `@` 默认 24 小时、可指定 3 小时的用法；公开文档不包含真实通知文本、URL 或凭据。站点说明有独立持久化回执，并在 `status` 中通过 `site_access_notices` 投影；它与两张报告图片的回执、文件及 SHA-256 完全分开，不会生成或重发日报图片。
+
+通知已确认 `sent` 后重启不重复发送；提交后状态为 `unknown` 时停止并先核实群内消息，不盲目重试；恢复时仍处于 `sending` 的通知转为 `unknown`。仅能确认尚未提交的失败可按有限退避重试。通知故障不得修改图片的发送状态，不得触发重新生成或重新投递报告。
 
 如启用 `deployment/qq_publish.py`，只为指定群设置独立受限 SSH 发布目标；该发布器仅同步该群已核验的简报/回顾和所需哈希图片 assets，最小化必要元数据，不上传 sources 快照、OneBot/model 配置、token 或其他群文件。远端目录仍应通过上述群账户与 socket 隔离提供。
 

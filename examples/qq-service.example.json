@@ -9,6 +9,7 @@
   "reports_dir": "./reports",
   "model_config": "./model.json",
   "vision_fallback_config": null,
+  "site_access_file": "./site-access.json",
   "enabled_from": 2051222400,
   "daily_hour": 5
 }

@@ -1,0 +1,8 @@
+{
+  "group_id": 1000000001,
+  "username": "REPLACE_WITH_THIS_GROUP_SITE_USERNAME",
+  "password": "REPLACE_WITH_THIS_GROUP_SITE_PASSWORD",
+  "url": "https://reports.example.invalid/qq/1000000001/",
+  "bot_name": "演示机器人",
+  "enabled_from": 2051222400
+}

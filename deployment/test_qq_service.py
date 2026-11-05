@@ -50,8 +50,41 @@ class FakeClient:
             raise error
         return f"message-{len(self.shared['sent'])}"
 
+    def send_text(self, group_id, text):
+        sent = self.shared.setdefault("sent_text", [])
+        sent.append((group_id, text))
+        return f"notice-{len(sent)}"
+
 
 class QQServiceTests(unittest.TestCase):
+    def test_daily_notice_waits_for_both_images_and_survives_reopen(self):
+        access = self.root / "site-access.json"
+        access.write_text(json.dumps({
+            "group_id": self.config['group_id'], "username": "synthetic-reader", "password": "test-only-password",
+            "url": f"https://reports.example.invalid/qq/{self.config['group_id']}/",
+            "bot_name": self.config['bot_names'][0], "enabled_from": self.now - 1}))
+        access.chmod(0o600)
+        self.config['site_access_file'] = access
+        self.service = self.make_service()
+        task_id = self.service._insert_task(kind='daily', start=self.now - 86400, end=self.now, now=self.now,
+            daily_key=dt.datetime.fromtimestamp(self.now, qq_service.TZ).date().isoformat())
+        with self.service._connect() as db:
+            db.execute("UPDATE tasks SET status='complete' WHERE id=?", (task_id,))
+            db.execute("UPDATE receipts SET state='sent',attempts=1,message_id='confirmed-brief' WHERE task_id=? AND edition='brief'", (task_id,))
+        self.assertEqual(self.service.process_site_access_notices(), [])
+        self.assertEqual(self.shared.get('sent_text', []), [])
+        with self.service._connect() as db:
+            db.execute("UPDATE receipts SET state='sent',attempts=1,message_id='confirmed-review' WHERE task_id=? AND edition='review'", (task_id,))
+            before = [tuple(row) for row in db.execute("SELECT edition,state,attempts,message_id FROM receipts WHERE task_id=? ORDER BY edition", (task_id,))]
+        self.assertEqual(self.service.process_site_access_notices()[0]['status'], 'sent')
+        reopened = self.make_service()
+        self.assertEqual(reopened.process_site_access_notices()[0]['status'], 'sent')
+        self.assertEqual(len(self.shared['sent_text']), 1)
+        self.assertEqual(self.shared['sent'], [])
+        with reopened._connect() as db:
+            after = [tuple(row) for row in db.execute("SELECT edition,state,attempts,message_id FROM receipts WHERE task_id=? ORDER BY edition", (task_id,))]
+        self.assertEqual(after, before)
+
     def test_legacy_unknown_submission_without_manifest_is_not_regenerated(self):
         self.service.save_messages([self.message()])
         task_id = self.service.enqueue_request(1_000_000, 3600)

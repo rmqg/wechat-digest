@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.2.3
+
+- Automatically send the QQ site-access/use notice only after both editions for a daily task have confirmed `sent` receipts. Track notice delivery separately so restarts do not duplicate confirmed notices and unknown submissions are not blindly retried.
+- Expose independent notification receipts through `status.site_access_notices`; recover interrupted `sending` notices to `unknown`, retry only confirmed pre-submit failures, and never alter image receipts or regenerate/resend reports.
+- Add an optional private per-group `site_access_file` configuration for the notice; retain independent group authorization and existing report image receipts.
+- Synchronize public runtime/template references to 1.2.3. No real domains, credentials, group identifiers, URLs or private chat data are published.
+
 ## 1.2.2
 
 - Fix shared-domain QQ report access in browsers that may reuse cached HTTP Basic credentials: route `/qq/*` to the QQ-specific authenticator before username-based legacy routing, while preserving the existing WeChat root route and per-group authorization boundaries.
